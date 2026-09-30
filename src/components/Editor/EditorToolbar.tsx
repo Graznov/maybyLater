@@ -1,3 +1,26 @@
-import type { ReactNode } from 'react'; import { Bold, CheckSquare, Italic, Link, List, ListOrdered, Quote, Strikethrough, Underline } from 'lucide-react';
-function Btn({label,children}:{label:string;children:ReactNode}){return <button className="editor-toolbar__button" type="button" title={label} aria-label={label}>{children}</button>}
-export function EditorToolbar(){return <div className="editor-toolbar"><div className="editor-toolbar__group"><Btn label="Жирный"><Bold size={17}/></Btn><Btn label="Курсив"><Italic size={17}/></Btn><Btn label="Подчеркнутый"><Underline size={17}/></Btn><Btn label="Зачеркнутый"><Strikethrough size={17}/></Btn></div><i/><div className="editor-toolbar__group"><Btn label="Список"><List size={18}/></Btn><Btn label="Нумерованный список"><ListOrdered size={18}/></Btn><Btn label="Задачи"><CheckSquare size={18}/></Btn></div><i/><div className="editor-toolbar__group"><Btn label="Цитата"><Quote size={17}/></Btn><Btn label="Ссылка"><Link size={17}/></Btn></div></div>}
+import type { ReactNode } from 'react';
+import { Bold, CheckSquare, Italic, Link, List, ListOrdered, Quote, Strikethrough, Underline } from 'lucide-react';
+
+function Btn({label,children}:{label:string;children:ReactNode}){
+    return <button className="editor-toolbar__button" type="button" title={label} aria-label={label}>{children}</button>}
+
+
+export function EditorToolbar(){
+    return <div className="editor-toolbar">
+        <div className="editor-toolbar__group">
+            <Btn label="Жирный"><Bold size={17}/>
+            </Btn>
+            <Btn label="Курсив"><Italic size={17}/></Btn>
+            <Btn label="Подчеркнутый"><Underline size={17}/></Btn>
+            <Btn label="Зачеркнутый"><Strikethrough size={17}/></Btn>
+        </div><i/>
+        <div className="editor-toolbar__group">
+            <Btn label="Список"><List size={18}/></Btn>
+            <Btn label="Нумерованный список"><ListOrdered size={18}/></Btn>
+            <Btn label="Задачи"><CheckSquare size={18}/></Btn>
+        </div><i/>
+        <div className="editor-toolbar__group">
+            <Btn label="Цитата"><Quote size={17}/></Btn>
+            <Btn label="Ссылка"><Link size={17}/></Btn>
+        </div>
+    </div>}
