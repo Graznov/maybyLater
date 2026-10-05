@@ -1,26 +1,3 @@
-import type { ReactNode } from 'react';
-import { Bold, CheckSquare, Italic, Link, List, ListOrdered, Quote, Strikethrough, Underline } from 'lucide-react';
-
-function Btn({label,children}:{label:string;children:ReactNode}){
-    return <button className="editor-toolbar__button" type="button" title={label} aria-label={label}>{children}</button>}
-
-
-export function EditorToolbar(){
-    return <div className="editor-toolbar">
-        <div className="editor-toolbar__group">
-            <Btn label="Жирный"><Bold size={17}/>
-            </Btn>
-            <Btn label="Курсив"><Italic size={17}/></Btn>
-            <Btn label="Подчеркнутый"><Underline size={17}/></Btn>
-            <Btn label="Зачеркнутый"><Strikethrough size={17}/></Btn>
-        </div><i/>
-        <div className="editor-toolbar__group">
-            <Btn label="Список"><List size={18}/></Btn>
-            <Btn label="Нумерованный список"><ListOrdered size={18}/></Btn>
-            <Btn label="Задачи"><CheckSquare size={18}/></Btn>
-        </div><i/>
-        <div className="editor-toolbar__group">
-            <Btn label="Цитата"><Quote size={17}/></Btn>
-            <Btn label="Ссылка"><Link size={17}/></Btn>
-        </div>
-    </div>}
+import { Bold,Italic,List,ListOrdered,Quote,Link,Palette } from 'lucide-react';
+type Props={onCommand:(command:string,value?:string)=>void};
+export function EditorToolbar({onCommand}:Props){const link=()=>{const url=prompt('Введите адрес ссылки');if(url)onCommand('createLink',url)};return <div className="editor-toolbar"><button onMouseDown={e=>{e.preventDefault();onCommand('bold')}} title="Жирный"><Bold/></button><button onMouseDown={e=>{e.preventDefault();onCommand('italic')}} title="Курсив"><Italic/></button><button onMouseDown={e=>{e.preventDefault();onCommand('insertUnorderedList')}} title="Маркированный список"><List/></button><button onMouseDown={e=>{e.preventDefault();onCommand('insertOrderedList')}} title="Нумерованный список"><ListOrdered/></button><button onMouseDown={e=>{e.preventDefault();onCommand('formatBlock','blockquote')}} title="Цитата"><Quote/></button><button onMouseDown={e=>{e.preventDefault();link()}} title="Ссылка"><Link/></button><label className="editor-toolbar__color" title="Цвет текста"><Palette/><input type="color" defaultValue="#2f74dc" onChange={e=>onCommand('foreColor',e.target.value)}/></label></div>}

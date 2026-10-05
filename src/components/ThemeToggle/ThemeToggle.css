@@ -1,0 +1,1 @@
+.theme-toggle{position:fixed;z-index:30;right:24px;top:20px;width:42px;height:42px;border:1px solid var(--border);border-radius:13px;background:var(--panel);color:var(--muted);display:grid;place-items:center;cursor:pointer;box-shadow:0 8px 24px rgba(15,23,42,.08)}.theme-toggle:hover{color:var(--text);transform:translateY(-1px)}

@@ -1,9 +1,17 @@
 {
-  "name": "my-journal",
+  "name": "maybe-later-journal",
   "private": true,
   "version": "0.1.0",
   "type": "module",
   "scripts": {"dev":"vite","build":"tsc -b && vite build","preview":"vite preview"},
-  "dependencies": {"@reduxjs/toolkit":"latest","date-fns":"latest","lucide-react":"latest","react":"latest","react-dom":"latest","react-redux":"latest","react-router-dom":"latest"},
-  "devDependencies": {"@types/react":"latest","@types/react-dom":"latest","@vitejs/plugin-react":"latest","typescript":"latest","vite":"latest"}
+  "dependencies": {
+    "@reduxjs/toolkit": "^2.9.0",
+    "date-fns": "^4.1.0",
+    "lucide-react": "^0.544.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "react-redux": "^9.2.0",
+    "react-router-dom": "^7.9.1"
+  },
+  "devDependencies": {"@types/react":"^19.1.13","@types/react-dom":"^19.1.9","@vitejs/plugin-react":"^5.0.3","typescript":"~5.9.2","vite":"^7.1.7"}
 }

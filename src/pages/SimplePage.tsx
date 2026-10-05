@@ -1,0 +1,1 @@
+export function SimplePage({title,text}:{title:string;text:string}){return <main className="simple-page"><div><h1>{title}</h1><p>{text}</p></div></main>}

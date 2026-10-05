@@ -1,17 +1,3 @@
-import { BarChart3, BookOpen, CalendarDays, NotebookPen, Settings, Tags } from 'lucide-react';
-import { NavLink } from 'react-router-dom';
-import './Sidebar.css';
-
-
-const navigation=[['Сегодня','/',BookOpen],['Календарь','/calendar',CalendarDays],['Все записи','/entries',NotebookPen],['Теги','/tags',Tags],['Статистика','/statistics',BarChart3]] as const;
-const tags=[['Личное','#5a8dee'],['Работа','#54b689'],['Идеи','#a477d4']];
-
-export function Sidebar(){
-    return <aside className="sidebar">
-                <div className="sidebar__logo">
-                    <div className="sidebar__logo-icon">
-                        <NotebookPen size={21}/>
-                    </div>
-                    <span className="sidebar__logo-text">Мой дневник</span>
-                </div>
-        <nav className="sidebar__navigation">{navigation.map(([title,path,Icon])=><NavLink key={path} to={path} className={({isActive})=>`sidebar__nav-item ${isActive?'sidebar__nav-item--active':''}`}><Icon size={19}/><span>{title}</span></NavLink>)}</nav><div className="sidebar__tags"><div className="sidebar__section-title">Теги</div>{tags.map(([title,color])=><button className="sidebar__tag" key={title}><span className="sidebar__tag-dot" style={{backgroundColor:color}}/><span>{title}</span></button>)}</div><div className="sidebar__bottom"><NavLink to="/settings" className={({isActive})=>`sidebar__nav-item ${isActive?'sidebar__nav-item--active':''}`}><Settings size={19}/><span>Настройки</span></NavLink></div></aside>}
+import { BarChart3,CalendarDays,NotebookPen,Settings,Tags,SquarePen } from 'lucide-react'; import { NavLink } from 'react-router-dom'; import { useAppDispatch,useAppSelector } from '../../app/hooks'; import { setTag } from '../../features/entries/entriesSlice'; import logo from '../../assets/book-logo.svg'; import './Sidebar.css';
+const nav=[['Сегодня','/',SquarePen],['Календарь','/calendar',CalendarDays],['Все записи','/entries',NotebookPen],['Теги','/tags',Tags],['Статистика','/statistics',BarChart3]] as const;const tags=[['Работа','#f2a38d'],['Личное','#9a9de5'],['Развитие','#7eb5dc'],['Здоровье','#d7b8ae'],['Путешествия','#ff914d'],['Идеи','#c5b796']];
+export function Sidebar(){const d=useAppDispatch(),active=useAppSelector(s=>s.entries.tag);return <aside className="sidebar"><div className="sidebar__logo"><img src={logo}/><b>Мой дневник</b></div><nav>{nav.map(([t,p,I])=><NavLink key={p} to={p} className={({isActive})=>'sidebar__item '+(isActive?'active':'')}><I size={20}/><span>{t}</span></NavLink>)}</nav><div className="sidebar__divider"/><div className="sidebar__tags"><strong>Теги</strong>{tags.map(([t,c])=><button key={t} className={active===t?'selected':''} onClick={()=>d(setTag(active===t?null:t))}><i style={{background:c}}/><span>{t}</span></button>)}</div><div className="sidebar__quote">«Маленькие шаги каждый день приводят к большим изменениям»</div><div className="sidebar__bottom"><NavLink to="/settings" className="sidebar__item"><Settings size={20}/><span>Настройки</span></NavLink></div></aside>}

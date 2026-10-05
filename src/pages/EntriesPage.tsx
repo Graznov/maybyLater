@@ -1,1 +1,1 @@
-import './pages.css'; export function EntriesPage(){return <main className="placeholder-page"><h1>Все записи</h1><p>Экран уже подключён к маршрутизации. Наполним его следующим этапом.</p></main>}
+import { Entries } from '../components/Entries/Entries';import { Editor } from '../components/Editor/Editor';import './pages.css';export function EntriesPage(){return <main className="journal-grid"><div className="journal-middle"><div className="section-heading"><h2>Все записи</h2><p>Поиск по всему дневнику</p></div><Entries all/></div><Editor/></main>}

@@ -1,1 +1,1 @@
-import './pages.css'; export function CalendarPage(){return <main className="placeholder-page"><h1>Календарь</h1><p>Экран уже подключён к маршрутизации. Наполним его следующим этапом.</p></main>}
+import { Calendar } from '../components/Calendar/Calendar';import { Entries } from '../components/Entries/Entries';import { Editor } from '../components/Editor/Editor';import './pages.css';export function CalendarPage(){return <main className="journal-grid"><div className="journal-middle"><Calendar/><Entries/></div><Editor/></main>}

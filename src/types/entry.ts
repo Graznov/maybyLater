@@ -1,1 +1,1 @@
-export type Entry = { id:string; title:string; content:string; date:string; time:string; tags:string[] };
+export type Entry={id:string;title:string;content:string;date:string;tags:string[];createdAt:string;updatedAt:string};

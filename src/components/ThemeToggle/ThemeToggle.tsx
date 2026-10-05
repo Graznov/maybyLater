@@ -1,0 +1,2 @@
+import { useState } from 'react';import { Moon, Sun } from 'lucide-react';import './ThemeToggle.css';
+export function ThemeToggle(){const [theme,setTheme]=useState(document.documentElement.dataset.theme==='dark'?'dark':'light');const toggle=()=>{const next=theme==='dark'?'light':'dark';document.documentElement.dataset.theme=next;localStorage.setItem('maybeLater.theme',next);setTheme(next)};return <button className="theme-toggle" onClick={toggle} title="Сменить тему" aria-label="Сменить тему">{theme==='dark'?<Sun size={18}/>:<Moon size={18}/>}</button>}
