@@ -260,7 +260,8 @@
 }
 
 .editor-toolbar button,
-.editor-toolbar__color {
+.editor-toolbar__color,
+.editor-toolbar__image {
   width: 36px;
   height: 36px;
   border: 0;
@@ -278,6 +279,7 @@
 
 .editor-toolbar button:hover,
 .editor-toolbar__color:hover,
+.editor-toolbar__image:hover,
 .editor-toolbar button.is-active {
   background: var(--accent-soft);
   color: var(--accent);
@@ -418,3 +420,10 @@
 .editor__info span { color:var(--muted); }
 .editor__info strong { font-weight:600; text-align:right; }
 @media (max-width:900px){.editor__meta > div{grid-template-columns:auto}.editor__meta span{display:none}.editor__header{padding-right:24px}}
+
+
+/* Images inside diary entries */
+.editor-toolbar__image { position: relative; }
+.editor-toolbar__image input { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
+.editor__richtext img { display:block; max-width:100%; height:auto; margin:24px auto; border-radius:12px; box-shadow:0 8px 28px rgba(15,23,42,.10); }
+.editor__richtext img.ProseMirror-selectednode { outline:2px solid var(--accent); outline-offset:3px; }

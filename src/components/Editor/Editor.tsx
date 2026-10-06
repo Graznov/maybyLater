@@ -8,6 +8,7 @@ import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
 import TextAlign from '@tiptap/extension-text-align';
 import { Color, TextStyle } from '@tiptap/extension-text-style';
+import Image from '@tiptap/extension-image';
 import { useAppDispatch, useAppSelector } from '../../app/hooks';
 import { deleteEntry, duplicateEntry, updateEntry } from '../../features/entries/entriesSlice';
 import { EditorToolbar } from './EditorToolbar';
@@ -37,12 +38,46 @@ export function Editor() {
       TextStyle,
       Color,
       TextAlign.configure({ types: ['heading', 'paragraph'] }),
+      Image.configure({ allowBase64: true, inline: false }),
     ],
     content: entry?.content ?? '',
     editorProps: {
       attributes: {
         class: 'editor__richtext tiptap',
         spellcheck: preferences.spellcheck ? 'true' : 'false',
+      },
+      handlePaste: (view, event) => {
+        const files = Array.from(event.clipboardData?.files ?? []).filter((file) => file.type.startsWith('image/'));
+        if (!files.length) return false;
+        event.preventDefault();
+        files.forEach((file) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            if (typeof reader.result !== 'string') return;
+            const node = view.state.schema.nodes.image?.create({ src: reader.result, alt: file.name });
+            if (node) view.dispatch(view.state.tr.replaceSelectionWith(node));
+          };
+          reader.readAsDataURL(file);
+        });
+        return true;
+      },
+      handleDrop: (view, event) => {
+        const files = Array.from(event.dataTransfer?.files ?? []).filter((file) => file.type.startsWith('image/'));
+        if (!files.length) return false;
+        event.preventDefault();
+        const coordinates = view.posAtCoords({ left: event.clientX, top: event.clientY });
+        files.forEach((file) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            if (typeof reader.result !== 'string') return;
+            const node = view.state.schema.nodes.image?.create({ src: reader.result, alt: file.name });
+            if (!node) return;
+            const position = coordinates?.pos ?? view.state.selection.from;
+            view.dispatch(view.state.tr.insert(position, node));
+          };
+          reader.readAsDataURL(file);
+        });
+        return true;
       },
     },
     onUpdate: ({ editor }) => {

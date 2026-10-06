@@ -8,6 +8,7 @@ import {
   CheckSquare,
   Eraser,
   Italic,
+  ImagePlus,
   Link,
   List,
   ListOrdered,
@@ -61,6 +62,7 @@ function ToolbarButton({
 export function EditorToolbar({ editor }: Props) {
   const [linkOpen, setLinkOpen] = useState(false);
   const [url, setUrl] = useState('https://');
+  const imageInputId = 'editor-image-upload';
   const [, forceRender] = useState(0);
 
   useEffect(() => {
@@ -106,6 +108,20 @@ export function EditorToolbar({ editor }: Props) {
       .run();
 
     setLinkOpen(false);
+  };
+
+  const addImages = (files: FileList | null) => {
+    if (!files) return;
+    Array.from(files)
+      .filter((file) => file.type.startsWith('image/'))
+      .forEach((file) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (typeof reader.result !== 'string') return;
+          editor.chain().focus().setImage({ src: reader.result, alt: file.name }).run();
+        };
+        reader.readAsDataURL(file);
+      });
   };
 
   return (
@@ -262,6 +278,20 @@ export function EditorToolbar({ editor }: Props) {
         <span className="editor-toolbar__separator" />
 
         <div className="editor-toolbar__group">
+          <label className="editor-toolbar__image" htmlFor={imageInputId} title="Добавить изображение" aria-label="Добавить изображение">
+            <ImagePlus />
+            <input
+              id={imageInputId}
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={(event) => {
+                addImages(event.target.files);
+                event.currentTarget.value = '';
+              }}
+            />
+          </label>
+
           <ToolbarButton
             title="Ссылка"
             active={editor.isActive('link')}
