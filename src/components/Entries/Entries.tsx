@@ -1,2 +1,33 @@
-import { Plus,Search } from 'lucide-react'; import { format } from 'date-fns'; import { ru } from 'date-fns/locale'; import { useAppDispatch,useAppSelector } from '../../app/hooks'; import { addEntry,selectEntry,setQuery } from '../../features/entries/entriesSlice'; import './Entries.css';
-export function Entries({all=false}:{all?:boolean}){const d=useAppDispatch();const s=useAppSelector(x=>x.entries);const items=s.items.filter(e=>(all||e.date===s.selectedDate)&&(!s.tag||e.tags.includes(s.tag))&&(`${e.title} ${e.content}`.toLowerCase().includes(s.query.toLowerCase()))).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));return <section className="entries"><div className="entries__tools"><div className="search"><Search/><input value={s.query} onChange={e=>d(setQuery(e.target.value))} placeholder="Поиск"/></div><button className="entries__add" onClick={()=>d(addEntry())}><Plus/> Новая</button></div><div className="entries__list">{items.length?items.map(e=><button key={e.id} onClick={()=>d(selectEntry(e.id))} className={'entry-card '+(e.id===s.selectedId?'active':'')}><div><b>{e.title||'Без названия'}</b><time>{format(new Date(e.updatedAt),'HH:mm',{locale:ru})}</time></div><p>{e.content.replace(/<[^>]*>/g,' ')||'Пустая запись'}</p>{e.tags.length>0&&<footer>{e.tags.map(t=><span key={t}>{t}</span>)}</footer>}</button>):<div className="entries__empty">Записей пока нет.<br/>Создай первую ✨</div>}</div></section>}
+import { Plus, Search } from 'lucide-react';
+import { format } from 'date-fns';
+import { useAppDispatch, useAppSelector } from '../../app/hooks';
+import { addEntry, selectEntry, setQuery } from '../../features/entries/entriesSlice';
+import './Entries.css';
+
+export function Entries({ all = false }: { all?: boolean }) {
+  const dispatch = useAppDispatch();
+  const state = useAppSelector((x) => x.entries);
+  const language = useAppSelector((x) => x.preferences.language);
+  const en = language === 'en';
+  const items = state.items
+    .filter((entry) => (all || entry.date === state.selectedDate) && (!state.tag || entry.tags.includes(state.tag)) && (`${entry.title} ${entry.content}`.toLowerCase().includes(state.query.toLowerCase())))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+
+  return (
+    <section className="entries">
+      <div className="entries__tools">
+        <div className="search"><Search /><input value={state.query} onChange={(e) => dispatch(setQuery(e.target.value))} placeholder={en ? 'Search' : 'Поиск'} /></div>
+        <button className="entries__add" onClick={() => dispatch(addEntry())}><Plus /> {en ? 'New' : 'Новая'}</button>
+      </div>
+      <div className="entries__list">
+        {items.length ? items.map((entry) => (
+          <button key={entry.id} onClick={() => dispatch(selectEntry(entry.id))} className={`entry-card ${entry.id === state.selectedId ? 'active' : ''}`}>
+            <div><b>{entry.title || (en ? 'Untitled' : 'Без названия')}</b><time>{format(new Date(entry.updatedAt), 'HH:mm')}</time></div>
+            <p>{entry.content.replace(/<[^>]*>/g, ' ') || (en ? 'Empty entry' : 'Пустая запись')}</p>
+            {entry.tags.length > 0 && <footer>{entry.tags.map((tag) => <span key={tag}>{tag}</span>)}</footer>}
+          </button>
+        )) : <div className="entries__empty">{en ? <>No entries yet.<br />Create your first one ✨</> : <>Записей пока нет.<br />Создай первую ✨</>}</div>}
+      </div>
+    </section>
+  );
+}

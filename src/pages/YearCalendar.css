@@ -1,0 +1,333 @@
+.year-calendar-page {
+  min-width: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(circle at 85% 0%, rgba(74, 132, 214, 0.08), transparent 28%),
+    var(--panel-soft);
+  overflow: hidden;
+}
+
+.year-calendar-toolbar {
+  position: relative;
+  z-index: 2;
+  min-height: 104px;
+  padding: 18px 26px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  background: color-mix(in srgb, var(--panel) 94%, transparent);
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 8px 24px rgba(22, 37, 58, 0.04);
+}
+
+.year-calendar-toolbar__year {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.year-calendar-toolbar__year div {
+  min-width: 112px;
+  text-align: center;
+}
+
+.year-calendar-toolbar__year span,
+.selected-date-info span {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.year-calendar-toolbar__year h1 {
+  margin: 0;
+  font-size: 26px;
+  line-height: 1;
+}
+
+.icon-button,
+.date-color-clear {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.icon-button:hover,
+.date-color-clear:hover:not(:disabled) {
+  background: var(--panel-soft);
+}
+
+.year-calendar-toolbar__actions {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 18px;
+}
+
+.selected-date-info {
+  min-width: 130px;
+}
+
+.selected-date-info strong {
+  display: block;
+  font-size: 13px;
+  text-transform: capitalize;
+}
+
+.date-color-picker {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--panel-soft);
+}
+
+.date-color-picker__label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.date-color-picker__colors {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.date-color-swatch {
+  width: 23px;
+  height: 23px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(20, 30, 45, 0.08);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.date-color-swatch:hover {
+  transform: scale(1.12);
+}
+
+.date-color-swatch.selected {
+  box-shadow:
+    0 0 0 2px var(--panel),
+    0 0 0 4px var(--accent);
+}
+
+.date-color-clear {
+  width: 29px;
+  height: 29px;
+  margin-left: 2px;
+  border-radius: 8px;
+}
+
+.date-color-clear:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.open-day-button {
+  height: 42px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 11px;
+  background: #17283a;
+  color: #fff;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.open-day-button:hover {
+  filter: brightness(1.08);
+}
+
+.year-calendar-scroll {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  padding: 24px 26px 34px;
+}
+
+.year-calendar-grid {
+  width: min(1440px, 100%);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.year-month {
+  min-width: 0;
+  padding: 17px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.year-month h2 {
+  margin: 0 0 14px;
+  font-size: 15px;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.year-month__weekdays,
+.year-month__days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.year-month__weekdays {
+  margin-bottom: 6px;
+}
+
+.year-month__weekdays span {
+  text-align: center;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.year-day {
+  position: relative;
+  aspect-ratio: 1;
+  min-width: 0;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text);
+  font-size: 11px;
+  cursor: pointer;
+  transition:
+    transform 0.12s ease,
+    background 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.year-day[style] {
+  background: color-mix(in srgb, var(--date-color) 28%, var(--panel));
+  border-color: color-mix(in srgb, var(--date-color) 38%, transparent);
+}
+
+.year-day:hover {
+  transform: translateY(-1px);
+  background: var(--accent-soft);
+}
+
+.year-day[style]:hover {
+  background: color-mix(in srgb, var(--date-color) 42%, var(--panel));
+}
+
+.year-day--selected {
+  border-color: var(--accent) !important;
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.year-day--today span {
+  font-weight: 800;
+  color: var(--accent);
+}
+
+.year-day--empty {
+  pointer-events: none;
+}
+
+.year-day__entry-dot {
+  position: absolute;
+  left: 50%;
+  bottom: 3px;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--accent);
+  transform: translateX(-50%);
+}
+
+@media (max-width: 1280px) {
+  .year-calendar-toolbar {
+    align-items: flex-start;
+  }
+
+  .year-calendar-toolbar__actions {
+    flex-wrap: wrap;
+  }
+
+  .year-calendar-grid {
+    grid-template-columns: repeat(3, minmax(210px, 1fr));
+  }
+}
+
+@media (max-width: 980px) {
+  .year-calendar-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .year-calendar-toolbar__actions {
+    justify-content: flex-start;
+  }
+
+  .year-calendar-grid {
+    grid-template-columns: repeat(2, minmax(220px, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .year-calendar-page {
+    height: auto;
+    min-height: 100vh;
+  }
+
+  .year-calendar-toolbar {
+    position: sticky;
+    top: 0;
+    padding: 14px;
+  }
+
+  .year-calendar-toolbar__actions {
+    gap: 10px;
+  }
+
+  .selected-date-info {
+    width: 100%;
+  }
+
+  .date-color-picker {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .year-calendar-scroll {
+    overflow: visible;
+    padding: 14px;
+  }
+
+  .year-calendar-grid {
+    grid-template-columns: 1fr;
+  }
+}

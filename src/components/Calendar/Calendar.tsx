@@ -1,2 +1,108 @@
-import { useMemo,useState } from 'react'; import { ChevronLeft,ChevronRight } from 'lucide-react'; import { addMonths,eachDayOfInterval,endOfMonth,endOfWeek,format,isSameMonth,startOfMonth,startOfWeek,subMonths } from 'date-fns'; import { ru } from 'date-fns/locale'; import { useAppDispatch,useAppSelector } from '../../app/hooks'; import { selectDate } from '../../features/entries/entriesSlice'; import './Calendar.css';
-export function Calendar(){const d=useAppDispatch();const selected=useAppSelector(s=>s.entries.selectedDate);const entries=useAppSelector(s=>s.entries.items);const [month,setMonth]=useState(()=>new Date(selected+'T12:00:00'));const days=useMemo(()=>eachDayOfInterval({start:startOfWeek(startOfMonth(month),{weekStartsOn:1}),end:endOfWeek(endOfMonth(month),{weekStartsOn:1})}),[month]);const marked=new Set(entries.map(e=>e.date));return <div className="calendar"><div className="calendar__head"><b>{format(month,'LLLL yyyy',{locale:ru})}</b><div><button onClick={()=>setMonth(subMonths(month,1))}><ChevronLeft/></button><button onClick={()=>setMonth(addMonths(month,1))}><ChevronRight/></button></div></div><div className="calendar__week">{['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].map(x=><span key={x}>{x}</span>)}</div><div className="calendar__grid">{days.map(day=>{const key=format(day,'yyyy-MM-dd');return <button key={key} className={`${key===selected?'selected ':''}${!isSameMonth(day,month)?'muted':''}`} onClick={()=>d(selectDate(key))}><span>{format(day,'d')}</span>{marked.has(key)&&<i/>}</button>})}</div></div>}
+import { useMemo, useState } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import {
+  addMonths,
+  eachDayOfInterval,
+  endOfMonth,
+  endOfWeek,
+  format,
+  isSameMonth,
+  startOfMonth,
+  startOfWeek,
+  subMonths,
+} from 'date-fns';
+import { ru } from 'date-fns/locale';
+import { useAppDispatch, useAppSelector } from '../../app/hooks';
+import { selectDate } from '../../features/entries/entriesSlice';
+import './Calendar.css';
+
+const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+
+export function Calendar() {
+  const dispatch = useAppDispatch();
+  const selectedDate = useAppSelector((state) => state.entries.selectedDate);
+  const entries = useAppSelector((state) => state.entries.items);
+  const dateColors = useAppSelector((state) => state.calendar.dateColors);
+
+  const [month, setMonth] = useState(
+    () => new Date(`${selectedDate}T12:00:00`),
+  );
+
+  const days = useMemo(
+    () =>
+      eachDayOfInterval({
+        start: startOfWeek(startOfMonth(month), { weekStartsOn: 1 }),
+        end: endOfWeek(endOfMonth(month), { weekStartsOn: 1 }),
+      }),
+    [month],
+  );
+
+  const entryDates = useMemo(
+    () => new Set(entries.map((entry) => entry.date)),
+    [entries],
+  );
+
+  return (
+    <div className="calendar">
+      <div className="calendar__head">
+        <b>{format(month, 'LLLL yyyy', { locale: ru })}</b>
+
+        <div>
+          <button
+            type="button"
+            onClick={() => setMonth(subMonths(month, 1))}
+            aria-label="Предыдущий месяц"
+          >
+            <ChevronLeft />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setMonth(addMonths(month, 1))}
+            aria-label="Следующий месяц"
+          >
+            <ChevronRight />
+          </button>
+        </div>
+      </div>
+
+      <div className="calendar__week">
+        {WEEKDAYS.map((weekday) => (
+          <span key={weekday}>{weekday}</span>
+        ))}
+      </div>
+
+      <div className="calendar__grid">
+        {days.map((day) => {
+          const key = format(day, 'yyyy-MM-dd');
+          const color = dateColors[key];
+          const isSelected = key === selectedDate;
+
+          return (
+            <button
+              type="button"
+              key={key}
+              className={[
+                isSelected ? 'selected' : '',
+                !isSameMonth(day, month) ? 'muted' : '',
+                color ? 'has-color' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              style={
+                color
+                  ? ({ '--calendar-date-color': color } as React.CSSProperties)
+                  : undefined
+              }
+              onClick={() => dispatch(selectDate(key))}
+              title={format(day, 'd MMMM yyyy', { locale: ru })}
+            >
+              <span>{format(day, 'd')}</span>
+              {entryDates.has(key) && <i aria-hidden="true" />}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

@@ -1,3 +1,89 @@
-import { BarChart3,CalendarDays,NotebookPen,Settings,Tags,SquarePen } from 'lucide-react'; import { NavLink } from 'react-router-dom'; import { useAppDispatch,useAppSelector } from '../../app/hooks'; import { setTag } from '../../features/entries/entriesSlice'; import logo from '../../assets/book-logo.svg'; import './Sidebar.css';
-const nav=[['Сегодня','/',SquarePen],['Календарь','/calendar',CalendarDays],['Все записи','/entries',NotebookPen],['Теги','/tags',Tags],['Статистика','/statistics',BarChart3]] as const;const tags=[['Работа','#f2a38d'],['Личное','#9a9de5'],['Развитие','#7eb5dc'],['Здоровье','#d7b8ae'],['Путешествия','#ff914d'],['Идеи','#c5b796']];
-export function Sidebar(){const d=useAppDispatch(),active=useAppSelector(s=>s.entries.tag);return <aside className="sidebar"><div className="sidebar__logo"><img src={logo}/><b>Мой дневник</b></div><nav>{nav.map(([t,p,I])=><NavLink key={p} to={p} className={({isActive})=>'sidebar__item '+(isActive?'active':'')}><I size={20}/><span>{t}</span></NavLink>)}</nav><div className="sidebar__divider"/><div className="sidebar__tags"><strong>Теги</strong>{tags.map(([t,c])=><button key={t} className={active===t?'selected':''} onClick={()=>d(setTag(active===t?null:t))}><i style={{background:c}}/><span>{t}</span></button>)}</div><div className="sidebar__quote">«Маленькие шаги каждый день приводят к большим изменениям»</div><div className="sidebar__bottom"><NavLink to="/settings" className="sidebar__item"><Settings size={20}/><span>Настройки</span></NavLink></div></aside>}
+import { FormEvent, useEffect, useState } from 'react';
+import { BarChart3, CalendarDays, NotebookPen, Pencil, Settings, SquarePen, Tags } from 'lucide-react';
+import { NavLink } from 'react-router-dom';
+import { useAppDispatch, useAppSelector } from '../../app/hooks';
+import { setTag } from '../../features/entries/entriesSlice';
+import { setJournalName } from '../../features/preferences/preferencesSlice';
+import { useI18n } from '../../i18n/useI18n';
+import { Modal } from '../Modal/Modal';
+import logo from '../../assets/book-logo.svg';
+import './Sidebar.css';
+
+export function Sidebar() {
+  const dispatch = useAppDispatch();
+  const { t } = useI18n();
+  const activeTag = useAppSelector((state) => state.entries.tag);
+  const tags = useAppSelector((state) => state.tags.items);
+  const journalName = useAppSelector((state) => state.preferences.journalName);
+  const [isNameModalOpen, setIsNameModalOpen] = useState(false);
+  const [nameDraft, setNameDraft] = useState(journalName);
+
+  const navigation = [
+    [t('today'), '/', SquarePen],
+    [t('calendar'), '/calendar', CalendarDays],
+    [t('allEntries'), '/entries', NotebookPen],
+    [t('tags'), '/tags', Tags],
+    [t('statistics'), '/statistics', BarChart3],
+  ] as const;
+
+  useEffect(() => {
+    if (isNameModalOpen) setNameDraft(journalName);
+  }, [isNameModalOpen, journalName]);
+
+  const handleSaveName = (event: FormEvent) => {
+    event.preventDefault();
+    if (!nameDraft.trim()) return;
+    dispatch(setJournalName(nameDraft));
+    setIsNameModalOpen(false);
+  };
+
+  return (
+    <>
+      <aside className="sidebar">
+        <button type="button" className="sidebar__logo" onClick={() => setIsNameModalOpen(true)} title={t('editName')}>
+          <img src={logo} alt="" />
+          <b>{journalName}</b>
+          <Pencil className="sidebar__logo-edit" size={14} />
+        </button>
+
+        <nav>
+          {navigation.map(([title, path, Icon]) => (
+            <NavLink key={path} to={path} className={({ isActive }) => `sidebar__item ${isActive ? 'active' : ''}`}>
+              <Icon size={20} />
+              <span>{title}</span>
+            </NavLink>
+          ))}
+        </nav>
+
+        <div className="sidebar__divider" />
+        <div className="sidebar__tags">
+          <strong>{t('tags')}</strong>
+          {tags.map((tag) => (
+            <button type="button" key={tag.id} className={activeTag === tag.name ? 'selected' : ''} onClick={() => dispatch(setTag(activeTag === tag.name ? null : tag.name))}>
+              <i style={{ background: tag.color }} />
+              <span>{tag.name}</span>
+            </button>
+          ))}
+          <NavLink to="/tags" className="sidebar__new-tag"><span>＋</span>{t('newTag')}</NavLink>
+        </div>
+
+        <div className="sidebar__quote">{t('quote')}</div>
+        <div className="sidebar__bottom">
+          <NavLink to="/settings" className="sidebar__item"><Settings size={20} /><span>{t('settings')}</span></NavLink>
+        </div>
+      </aside>
+
+      <Modal open={isNameModalOpen} title={t('journalName')} onClose={() => setIsNameModalOpen(false)} footer={
+        <>
+          <button type="button" className="modal__button" onClick={() => setIsNameModalOpen(false)}>{t('cancel')}</button>
+          <button type="submit" form="journal-name-form" className="modal__button modal__button--primary" disabled={!nameDraft.trim()}>{t('save')}</button>
+        </>
+      }>
+        <form id="journal-name-form" onSubmit={handleSaveName}>
+          <label htmlFor="journal-name">{t('nameQuestion')}</label>
+          <input id="journal-name" className="modal__input" value={nameDraft} onChange={(event) => setNameDraft(event.target.value)} maxLength={40} autoFocus placeholder={t('nameExample')} />
+        </form>
+      </Modal>
+    </>
+  );
+}

@@ -1,1 +1,23 @@
-import { Routes,Route } from 'react-router-dom';import { MainLayout } from './layouts/MainLayout';import { TodayPage } from './pages/TodayPage';import { CalendarPage } from './pages/CalendarPage';import { EntriesPage } from './pages/EntriesPage';import { SimplePage } from './pages/SimplePage';export default function App(){return <Routes><Route element={<MainLayout/>}><Route path="/" element={<TodayPage/>}/><Route path="/calendar" element={<CalendarPage/>}/><Route path="/entries" element={<EntriesPage/>}/><Route path="/tags" element={<SimplePage title="Теги" text="Фильтр по тегам уже работает из боковой панели. Отдельный экран можно развить позже."/>}/><Route path="/statistics" element={<SimplePage title="Статистика" text="Здесь позже появятся серии дней, количество записей и активность."/>}/><Route path="/settings" element={<SimplePage title="Настройки" text="Тема, шрифт, экспорт и резервные копии появятся здесь."/>}/></Route></Routes>}
+import { Route, Routes } from 'react-router-dom';
+import { MainLayout } from './layouts/MainLayout';
+import { TodayPage } from './pages/TodayPage';
+import { CalendarPage } from './pages/CalendarPage';
+import { EntriesPage } from './pages/EntriesPage';
+import { TagsPage } from './pages/TagsPage';
+import { StatisticsPage } from './pages/StatisticsPage';
+import { SettingsPage } from './pages/SettingsPage';
+
+export default function App() {
+  return (
+    <Routes>
+      <Route element={<MainLayout />}>
+        <Route path="/" element={<TodayPage />} />
+        <Route path="/calendar" element={<CalendarPage />} />
+        <Route path="/entries" element={<EntriesPage />} />
+        <Route path="/tags" element={<TagsPage />} />
+        <Route path="/statistics" element={<StatisticsPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
+      </Route>
+    </Routes>
+  );
+}

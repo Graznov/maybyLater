@@ -1,1 +1,112 @@
-.calendar{padding:26px 22px 20px;border-bottom:1px solid var(--border);background:var(--panel-soft)}.calendar__head{display:flex;justify-content:space-between;align-items:center;text-transform:capitalize;margin-bottom:18px}.calendar__head b{font-size:15px;color:var(--text)}.calendar__head button{border:0;background:transparent;color:var(--muted);padding:4px;cursor:pointer}.calendar__head svg{width:17px}.calendar__week,.calendar__grid{display:grid;grid-template-columns:repeat(7,1fr);text-align:center}.calendar__week{font-size:10px;color:var(--muted);margin-bottom:5px}.calendar__grid button{position:relative;border:0;background:transparent;height:35px;border-radius:9px;color:var(--text);cursor:pointer}.calendar__grid button:hover{background:var(--accent-soft)}.calendar__grid button.selected{background:#1b2b3c;color:white}.calendar__grid button.muted{opacity:.35}.calendar__grid i{position:absolute;width:4px;height:4px;border-radius:50%;background:var(--accent);bottom:3px;left:calc(50% - 2px)}.calendar__grid .selected i{background:white}
+.calendar {
+  padding: 26px 22px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-soft);
+}
+
+.calendar__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 18px;
+  text-transform: capitalize;
+}
+
+.calendar__head b {
+  color: var(--text);
+  font-size: 15px;
+}
+
+.calendar__head button {
+  padding: 4px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.calendar__head svg {
+  width: 17px;
+}
+
+.calendar__week,
+.calendar__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  text-align: center;
+}
+
+.calendar__week {
+  margin-bottom: 5px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.calendar__grid button {
+  position: relative;
+  height: 35px;
+  padding: 0;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  cursor: pointer;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    transform 140ms ease;
+}
+
+.calendar__grid button:hover {
+  background: var(--accent-soft);
+}
+
+.calendar__grid button.has-color {
+  background: color-mix(
+    in srgb,
+    var(--calendar-date-color) 34%,
+    var(--panel-soft)
+  );
+  border-color: color-mix(
+    in srgb,
+    var(--calendar-date-color) 48%,
+    transparent
+  );
+}
+
+.calendar__grid button.has-color:hover {
+  background: color-mix(
+    in srgb,
+    var(--calendar-date-color) 48%,
+    var(--panel-soft)
+  );
+}
+
+.calendar__grid button.selected {
+  color: var(--text);
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.calendar__grid button.selected:not(.has-color) {
+  color: white;
+  background: #1b2b3c;
+}
+
+.calendar__grid button.muted {
+  opacity: 0.35;
+}
+
+.calendar__grid i {
+  position: absolute;
+  bottom: 3px;
+  left: calc(50% - 2px);
+  width: 4px;
+  height: 4px;
+  background: var(--accent);
+  border-radius: 50%;
+}
+
+.calendar__grid .selected:not(.has-color) i {
+  background: white;
+}
