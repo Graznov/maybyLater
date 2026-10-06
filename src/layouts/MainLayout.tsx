@@ -2,7 +2,6 @@ import { useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
 import { useAppSelector } from '../app/hooks';
 import { Sidebar } from '../components/Sidebar/Sidebar';
-import { ThemeToggle } from '../components/ThemeToggle/ThemeToggle';
 import './MainLayout.css';
 
 export function MainLayout() {
@@ -28,7 +27,6 @@ export function MainLayout() {
   return (
     <div className="main-layout">
       <Sidebar />
-      <ThemeToggle />
       <Outlet />
     </div>
   );

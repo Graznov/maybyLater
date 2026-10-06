@@ -88,6 +88,23 @@ const entriesSlice = createSlice({
         persistEntries(state.items);
       }
     },
+    duplicateEntry(state, action: PayloadAction<string>) {
+      const source = state.items.find((entry) => entry.id === action.payload);
+      if (!source) return;
+      const now = new Date().toISOString();
+      const copy: Entry = {
+        ...source,
+        id: crypto.randomUUID(),
+        title: `${source.title || 'Без названия'} — копия`,
+        createdAt: now,
+        updatedAt: now,
+        tags: [...source.tags],
+      };
+      state.items.unshift(copy);
+      state.selectedId = copy.id;
+      state.selectedDate = copy.date;
+      persistEntries(state.items);
+    },
     deleteEntry(state, action: PayloadAction<string>) {
       state.items = state.items.filter((entry) => entry.id !== action.payload);
 
@@ -139,6 +156,7 @@ export const {
   selectEntry,
   addEntry,
   updateEntry,
+  duplicateEntry,
   deleteEntry,
   renameTagInEntries,
   removeTagFromEntries,

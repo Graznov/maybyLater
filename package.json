@@ -1,9 +1,13 @@
 {
   "name": "maybe-later-journal",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.10.0",
   "type": "module",
-  "scripts": {"dev":"vite","build":"tsc -b && vite build","preview":"vite preview"},
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview"
+  },
   "dependencies": {
     "@reduxjs/toolkit": "^2.9.0",
     "date-fns": "^4.1.0",
@@ -11,7 +15,20 @@
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-redux": "^9.2.0",
-    "react-router-dom": "^7.9.1"
+    "react-router-dom": "^7.9.1",
+    "@tiptap/react": "^3.7.2",
+    "@tiptap/pm": "^3.7.2",
+    "@tiptap/starter-kit": "^3.7.2",
+    "@tiptap/extension-task-list": "^3.7.2",
+    "@tiptap/extension-task-item": "^3.7.2",
+    "@tiptap/extension-text-align": "^3.7.2",
+    "@tiptap/extension-text-style": "^3.7.2"
   },
-  "devDependencies": {"@types/react":"^19.1.13","@types/react-dom":"^19.1.9","@vitejs/plugin-react":"^5.0.3","typescript":"~5.9.2","vite":"^7.1.7"}
+  "devDependencies": {
+    "@types/react": "^19.1.13",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.3",
+    "typescript": "~5.9.2",
+    "vite": "^7.1.7"
+  }
 }

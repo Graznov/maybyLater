@@ -5,6 +5,7 @@ import { useAppDispatch, useAppSelector } from '../../app/hooks';
 import { setTag } from '../../features/entries/entriesSlice';
 import { setJournalName } from '../../features/preferences/preferencesSlice';
 import { useI18n } from '../../i18n/useI18n';
+import { quotes } from '../../data/quotes';
 import { Modal } from '../Modal/Modal';
 import logo from '../../assets/book-logo.svg';
 import './Sidebar.css';
@@ -17,6 +18,7 @@ export function Sidebar() {
   const journalName = useAppSelector((state) => state.preferences.journalName);
   const [isNameModalOpen, setIsNameModalOpen] = useState(false);
   const [nameDraft, setNameDraft] = useState(journalName);
+  const [quote] = useState(() => quotes[Math.floor(Math.random() * quotes.length)] ?? '');
 
   const navigation = [
     [t('today'), '/', SquarePen],
@@ -67,7 +69,9 @@ export function Sidebar() {
           <NavLink to="/tags" className="sidebar__new-tag"><span>＋</span>{t('newTag')}</NavLink>
         </div>
 
-        <div className="sidebar__quote">{t('quote')}</div>
+        <div className="sidebar__quote" title={quote}>
+          {quote}
+        </div>
         <div className="sidebar__bottom">
           <NavLink to="/settings" className="sidebar__item"><Settings size={20} /><span>{t('settings')}</span></NavLink>
         </div>

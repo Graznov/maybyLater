@@ -1,94 +1,299 @@
-import { useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
+import type { Editor } from '@tiptap/react';
 import {
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
   Bold,
+  CheckSquare,
+  Eraser,
   Italic,
   Link,
   List,
   ListOrdered,
+  Minus,
   Palette,
   Quote,
+  Redo2,
+  Strikethrough,
+  Underline,
+  Undo2,
 } from 'lucide-react';
 import { Modal } from '../Modal/Modal';
 
 type Props = {
-  onCommand: (command: string, value?: string) => void;
+  editor: Editor | null;
 };
 
-export function EditorToolbar({ onCommand }: Props) {
+type ToolbarButtonProps = {
+  title: string;
+  active?: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+};
+
+function ToolbarButton({
+  title,
+  active = false,
+  disabled = false,
+  onClick,
+  children,
+}: ToolbarButtonProps) {
+  return (
+    <button
+      type="button"
+      className={active ? 'is-active' : ''}
+      title={title}
+      aria-label={title}
+      aria-pressed={active}
+      disabled={disabled}
+      onMouseDown={(event) => {
+        event.preventDefault();
+        onClick();
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+export function EditorToolbar({ editor }: Props) {
   const [linkOpen, setLinkOpen] = useState(false);
   const [url, setUrl] = useState('https://');
-  const selectionRef = useRef<Range | null>(null);
+  const [, forceRender] = useState(0);
 
-  const openLink = () => {
-    const selection = window.getSelection();
-
-    if (selection?.rangeCount) {
-      selectionRef.current = selection.getRangeAt(0).cloneRange();
-    }
-
-    setUrl('https://');
-    setLinkOpen(true);
-  };
-
-  const createLink = () => {
-    const value = url.trim();
-
-    if (!value) {
+  useEffect(() => {
+    if (!editor) {
       return;
     }
 
-    const selection = window.getSelection();
+    const update = () => forceRender((value) => value + 1);
 
-    if (selection && selectionRef.current) {
-      selection.removeAllRanges();
-      selection.addRange(selectionRef.current);
-    }
+    editor.on('selectionUpdate', update);
+    editor.on('transaction', update);
 
-    onCommand('createLink', value);
-    setLinkOpen(false);
+    return () => {
+      editor.off('selectionUpdate', update);
+      editor.off('transaction', update);
+    };
+  }, [editor]);
+
+  if (!editor) {
+    return <div className="editor-toolbar" />;
+  }
+
+  const openLink = () => {
+    const currentUrl = editor.getAttributes('link').href as string | undefined;
+    setUrl(currentUrl || 'https://');
+    setLinkOpen(true);
   };
 
-  const run = (command: string, value?: string) =>
-    (event: React.MouseEvent<HTMLButtonElement>) => {
-      event.preventDefault();
-      onCommand(command, value);
-    };
+  const applyLink = () => {
+    const value = url.trim();
+
+    if (!value || value === 'https://') {
+      editor.chain().focus().unsetLink().run();
+      setLinkOpen(false);
+      return;
+    }
+
+    editor
+      .chain()
+      .focus()
+      .extendMarkRange('link')
+      .setLink({ href: value })
+      .run();
+
+    setLinkOpen(false);
+  };
 
   return (
     <>
       <div className="editor-toolbar">
-        <button onMouseDown={run('bold')} title="Жирный">
-          <Bold />
-        </button>
-        <button onMouseDown={run('italic')} title="Курсив">
-          <Italic />
-        </button>
-        <button onMouseDown={run('insertUnorderedList')} title="Маркированный список">
-          <List />
-        </button>
-        <button onMouseDown={run('insertOrderedList')} title="Нумерованный список">
-          <ListOrdered />
-        </button>
-        <button onMouseDown={run('formatBlock', 'blockquote')} title="Цитата">
-          <Quote />
-        </button>
-        <button
-          onMouseDown={(event) => {
-            event.preventDefault();
-            openLink();
-          }}
-          title="Ссылка"
-        >
-          <Link />
-        </button>
-        <label className="editor-toolbar__color" title="Цвет текста">
-          <Palette />
-          <input
-            type="color"
-            defaultValue="#2f74dc"
-            onChange={(event) => onCommand('foreColor', event.target.value)}
-          />
-        </label>
+        <div className="editor-toolbar__group">
+          <ToolbarButton
+            title="Отменить"
+            disabled={!editor.can().chain().focus().undo().run()}
+            onClick={() => editor.chain().focus().undo().run()}
+          >
+            <Undo2 />
+          </ToolbarButton>
+
+          <ToolbarButton
+            title="Повторить"
+            disabled={!editor.can().chain().focus().redo().run()}
+            onClick={() => editor.chain().focus().redo().run()}
+          >
+            <Redo2 />
+          </ToolbarButton>
+        </div>
+
+        <span className="editor-toolbar__separator" />
+
+        <div className="editor-toolbar__group">
+          {[1, 2, 3].map((level) => (
+            <ToolbarButton
+              key={level}
+              title={`Заголовок ${level}`}
+              active={editor.isActive('heading', { level })}
+              onClick={() =>
+                editor
+                  .chain()
+                  .focus()
+                  .toggleHeading({ level: level as 1 | 2 | 3 })
+                  .run()
+              }
+            >
+              <span className="editor-toolbar__heading">
+                H<small>{level}</small>
+              </span>
+            </ToolbarButton>
+          ))}
+        </div>
+
+        <span className="editor-toolbar__separator" />
+
+        <div className="editor-toolbar__group">
+          <ToolbarButton
+            title="Жирный"
+            active={editor.isActive('bold')}
+            onClick={() => editor.chain().focus().toggleBold().run()}
+          >
+            <Bold />
+          </ToolbarButton>
+
+          <ToolbarButton
+            title="Курсив"
+            active={editor.isActive('italic')}
+            onClick={() => editor.chain().focus().toggleItalic().run()}
+          >
+            <Italic />
+          </ToolbarButton>
+
+          <ToolbarButton
+            title="Подчёркнутый"
+            active={editor.isActive('underline')}
+            onClick={() => editor.chain().focus().toggleUnderline().run()}
+          >
+            <Underline />
+          </ToolbarButton>
+
+          <ToolbarButton
+            title="Зачёркнутый"
+            active={editor.isActive('strike')}
+            onClick={() => editor.chain().focus().toggleStrike().run()}
+          >
+            <Strikethrough />
+          </ToolbarButton>
+        </div>
+
+        <span className="editor-toolbar__separator" />
+
+        <div className="editor-toolbar__group">
+          <ToolbarButton
+            title="Чек-лист"
+            active={editor.isActive('taskList')}
+            onClick={() => editor.chain().focus().toggleTaskList().run()}
+          >
+            <CheckSquare />
+          </ToolbarButton>
+
+          <ToolbarButton
+            title="Маркированный список"
+            active={editor.isActive('bulletList')}
+            onClick={() => editor.chain().focus().toggleBulletList().run()}
+          >
+            <List />
+          </ToolbarButton>
+
+          <ToolbarButton
+            title="Нумерованный список"
+            active={editor.isActive('orderedList')}
+            onClick={() => editor.chain().focus().toggleOrderedList().run()}
+          >
+            <ListOrdered />
+          </ToolbarButton>
+
+          <ToolbarButton
+            title="Цитата"
+            active={editor.isActive('blockquote')}
+            onClick={() => editor.chain().focus().toggleBlockquote().run()}
+          >
+            <Quote />
+          </ToolbarButton>
+
+          <ToolbarButton
+            title="Горизонтальная линия"
+            onClick={() => editor.chain().focus().setHorizontalRule().run()}
+          >
+            <Minus />
+          </ToolbarButton>
+        </div>
+
+        <span className="editor-toolbar__separator" />
+
+        <div className="editor-toolbar__group">
+          <ToolbarButton
+            title="По левому краю"
+            active={editor.isActive({ textAlign: 'left' })}
+            onClick={() => editor.chain().focus().setTextAlign('left').run()}
+          >
+            <AlignLeft />
+          </ToolbarButton>
+
+          <ToolbarButton
+            title="По центру"
+            active={editor.isActive({ textAlign: 'center' })}
+            onClick={() => editor.chain().focus().setTextAlign('center').run()}
+          >
+            <AlignCenter />
+          </ToolbarButton>
+
+          <ToolbarButton
+            title="По правому краю"
+            active={editor.isActive({ textAlign: 'right' })}
+            onClick={() => editor.chain().focus().setTextAlign('right').run()}
+          >
+            <AlignRight />
+          </ToolbarButton>
+        </div>
+
+        <span className="editor-toolbar__separator" />
+
+        <div className="editor-toolbar__group">
+          <ToolbarButton
+            title="Ссылка"
+            active={editor.isActive('link')}
+            onClick={openLink}
+          >
+            <Link />
+          </ToolbarButton>
+
+          <label
+            className="editor-toolbar__color"
+            title="Цвет текста"
+            aria-label="Цвет текста"
+          >
+            <Palette />
+            <input
+              type="color"
+              value={editor.getAttributes('textStyle').color || '#2f74dc'}
+              onChange={(event) =>
+                editor.chain().focus().setColor(event.target.value).run()
+              }
+            />
+          </label>
+
+          <ToolbarButton
+            title="Очистить форматирование"
+            onClick={() =>
+              editor.chain().focus().unsetAllMarks().clearNodes().run()
+            }
+          >
+            <Eraser />
+          </ToolbarButton>
+        </div>
       </div>
 
       <Modal
@@ -97,11 +302,33 @@ export function EditorToolbar({ onCommand }: Props) {
         onClose={() => setLinkOpen(false)}
         footer={
           <>
-            <button className="modal__button" onClick={() => setLinkOpen(false)}>
+            <button
+              type="button"
+              className="modal__button"
+              onClick={() => setLinkOpen(false)}
+            >
               Отмена
             </button>
-            <button className="modal__button modal__button--primary" onClick={createLink}>
-              Добавить
+
+            {editor.isActive('link') && (
+              <button
+                type="button"
+                className="modal__button"
+                onClick={() => {
+                  editor.chain().focus().unsetLink().run();
+                  setLinkOpen(false);
+                }}
+              >
+                Удалить ссылку
+              </button>
+            )}
+
+            <button
+              type="button"
+              className="modal__button modal__button--primary"
+              onClick={applyLink}
+            >
+              Сохранить
             </button>
           </>
         }
@@ -115,7 +342,7 @@ export function EditorToolbar({ onCommand }: Props) {
           onChange={(event) => setUrl(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === 'Enter') {
-              createLink();
+              applyLink();
             }
           }}
           placeholder="https://example.com"
