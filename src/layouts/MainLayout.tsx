@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
 import { useAppSelector } from '../app/hooks';
+import { TitleBar } from '../components/TitleBar/TitleBar';
 import { Sidebar } from '../components/Sidebar/Sidebar';
 import './MainLayout.css';
 
@@ -25,9 +26,12 @@ export function MainLayout() {
   }, [preferences]);
 
   return (
-    <div className="main-layout">
-      <Sidebar />
-      <Outlet />
+    <div className="desktop-shell">
+      <TitleBar />
+      <div className="main-layout">
+        <Sidebar />
+        <Outlet />
+      </div>
     </div>
   );
 }

@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "tauri": "tauri"
   },
   "dependencies": {
     "@reduxjs/toolkit": "^2.9.0",
@@ -23,13 +24,15 @@
     "@tiptap/extension-task-item": "^3.7.2",
     "@tiptap/extension-text-align": "^3.7.2",
     "@tiptap/extension-text-style": "^3.7.2",
-    "@tiptap/extension-image": "^3.7.2"
+    "@tiptap/extension-image": "^3.7.2",
+    "@tauri-apps/api": "^2.0.0"
   },
   "devDependencies": {
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^5.0.3",
     "typescript": "~5.9.2",
-    "vite": "^7.1.7"
+    "vite": "^7.1.7",
+    "@tauri-apps/cli": "^2.8.4"
   }
 }

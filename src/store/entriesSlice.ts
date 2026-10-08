@@ -1,20 +1,85 @@
-import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
-import { mockEntries } from '../data/mockEntries';
+import {
+  createSlice,
+  type PayloadAction,
+} from '@reduxjs/toolkit';
+
 import type { Entry } from '../types/entry';
-type State={
-    items:Entry[];
-    selectedId:string|null;
-    selectedDate:string
+
+type State = {
+  items: Entry[];
+  selectedId: string | null;
+  selectedDate: string;
 };
-const initialState:State={
-    items:mockEntries,
-    selectedId:'1',
-    selectedDate:'2026-09-23'
+
+const getToday = () => {
+  const now = new Date();
+
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
 };
-const slice=createSlice({name:'entries',initialState,reducers:{
- selectEntry:(s,a:PayloadAction<string>)=>{s.selectedId=a.payload; const e=s.items.find(x=>x.id===a.payload); if(e)s.selectedDate=e.date},
- selectDate:(s,a:PayloadAction<string>)=>{s.selectedDate=a.payload; const e=s.items.find(x=>x.date===a.payload); if(e)s.selectedId=e.id},
- updateEntry:(s,a:PayloadAction<Entry>)=>{const i=s.items.findIndex(x=>x.id===a.payload.id);if(i>=0)s.items[i]=a.payload}
-}});
-export const {selectEntry,selectDate,updateEntry}=slice.actions;
+
+const initialState: State = {
+  items: [],
+  selectedId: null,
+  selectedDate: getToday(),
+};
+
+const slice = createSlice({
+  name: 'entries',
+
+  initialState,
+
+  reducers: {
+    selectEntry: (
+      state,
+      action: PayloadAction<string>,
+    ) => {
+      state.selectedId = action.payload;
+
+      const entry = state.items.find(
+        (item) => item.id === action.payload,
+      );
+
+      if (entry) {
+        state.selectedDate = entry.date;
+      }
+    },
+
+    selectDate: (
+      state,
+      action: PayloadAction<string>,
+    ) => {
+      state.selectedDate = action.payload;
+
+      const entry = state.items.find(
+        (item) => item.date === action.payload,
+      );
+
+      state.selectedId = entry?.id ?? null;
+    },
+
+    updateEntry: (
+      state,
+      action: PayloadAction<Entry>,
+    ) => {
+      const index = state.items.findIndex(
+        (item) => item.id === action.payload.id,
+      );
+
+      if (index >= 0) {
+        state.items[index] = action.payload;
+      }
+    },
+  },
+});
+
+export const {
+  selectEntry,
+  selectDate,
+  updateEntry,
+} = slice.actions;
+
 export default slice.reducer;

@@ -218,3 +218,5 @@
   background-image: none !important;
   background-color: #142536 !important;
 }
+
+.sidebar__quote{scrollbar-width:none;-ms-overflow-style:none;overscroll-behavior:contain}.sidebar__quote::-webkit-scrollbar{display:none}

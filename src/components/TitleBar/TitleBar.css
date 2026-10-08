@@ -1,0 +1,13 @@
+.desktop-titlebar{height:38px;flex:0 0 38px;display:flex;align-items:stretch;background:var(--panel);color:var(--text);user-select:none;-webkit-user-select:none;border-bottom:1px solid var(--border)}
+.desktop-titlebar__drag{flex:1;min-width:0;display:flex;align-items:center;padding-left:18px;cursor:default}
+.desktop-titlebar__name{font-size:13px;font-weight:600;opacity:.86;pointer-events:none}
+.desktop-titlebar__actions{display:flex;align-items:stretch}
+.desktop-titlebar__actions button{width:46px;height:38px;display:flex;align-items:center;justify-content:center;border:0;background:transparent;color:inherit;cursor:pointer}
+.desktop-titlebar__actions button:hover{background:var(--accent-soft)}
+.desktop-titlebar__actions .desktop-titlebar__close:hover{background:#d83b41;color:white}
+.desktop-titlebar__actions button:focus-visible{outline:2px solid var(--accent);outline-offset:-3px}
+
+.desktop-titlebar{position:absolute;inset:0 0 auto 0;height:44px;flex:none;z-index:100;background:transparent;border:0;pointer-events:none}
+.desktop-titlebar__drag{margin-left:max(740px,50%);height:16px;pointer-events:auto}
+.desktop-titlebar__actions{margin-left:auto;pointer-events:auto}
+.desktop-titlebar__actions button{height:44px;width:46px}

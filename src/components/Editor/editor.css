@@ -427,3 +427,7 @@
 .editor-toolbar__image input { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
 .editor__richtext img { display:block; max-width:100%; height:auto; margin:24px auto; border-radius:12px; box-shadow:0 8px 28px rgba(15,23,42,.10); }
 .editor__richtext img.ProseMirror-selectednode { outline:2px solid var(--accent); outline-offset:3px; }
+
+/* Reserve space for the three window control buttons. */
+.editor .editor__header{padding-right:158px}
+@media(max-width:900px){.editor .editor__header{padding-right:158px}}

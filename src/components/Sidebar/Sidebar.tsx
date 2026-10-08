@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { BarChart3, CalendarDays, NotebookPen, Pencil, Settings, SquarePen, Tags } from 'lucide-react';
+import { BarChart3, BookOpen, CalendarDays, NotebookPen, Pencil, Settings, SquarePen, Tags } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '../../app/hooks';
 import { setTag } from '../../features/entries/entriesSlice';
@@ -7,7 +7,6 @@ import { setJournalName } from '../../features/preferences/preferencesSlice';
 import { useI18n } from '../../i18n/useI18n';
 import { quotes } from '../../data/quotes';
 import { Modal } from '../Modal/Modal';
-import logo from '../../assets/book-logo.svg';
 import './Sidebar.css';
 
 export function Sidebar() {
@@ -43,7 +42,7 @@ export function Sidebar() {
     <>
       <aside className="sidebar">
         <button type="button" className="sidebar__logo" onClick={() => setIsNameModalOpen(true)} title={t('editName')}>
-          <img src={logo} alt="" />
+          <BookOpen size={30} strokeWidth={2} aria-hidden="true" />
           <b>{journalName}</b>
           <Pencil className="sidebar__logo-edit" size={14} />
         </button>

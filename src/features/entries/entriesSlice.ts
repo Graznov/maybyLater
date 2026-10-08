@@ -29,13 +29,22 @@ type EntriesState = {
   tag: string | null;
 };
 
-const today = new Date().toISOString().slice(0, 10);
+function getLocalToday(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+const today = getLocalToday();
 const initialItems = loadEntries();
+const todayEntry = initialItems.find((entry) => entry.date === today);
 
 const initialState: EntriesState = {
   items: initialItems,
-  selectedDate: initialItems[0]?.date ?? today,
-  selectedId: initialItems[0]?.id ?? null,
+  selectedDate: today,
+  selectedId: todayEntry?.id ?? null,
   query: '',
   tag: null,
 };
