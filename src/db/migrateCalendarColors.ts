@@ -4,9 +4,11 @@ import type { CalendarColors } from '../features/calendar/calendarSlice';
 const STORAGE_KEY = 'maybeLater.calendarColors.v1';
 type ColorRow = { date: string; color: string };
 
-/** First-stage migration only. The calendar continues using localStorage until the next release. */
+/** One-time handover from localStorage to SQLite; never replay stale data after handover. */
 export async function migrateCalendarColorsToSqlite(): Promise<CalendarColors> {
-  const raw = localStorage.getItem(STORAGE_KEY);
+  const handoverKey = 'maybeLater.calendarColors.sqliteWriter.v1';
+  const handedOver = localStorage.getItem(handoverKey) === '1';
+  const raw = handedOver ? null : localStorage.getItem(STORAGE_KEY);
   let colors: [string, string][] | null = null;
   if (raw !== null) {
     let parsed: unknown;
@@ -47,7 +49,10 @@ export async function migrateCalendarColorsToSqlite(): Promise<CalendarColors> {
     if (colors !== null && (rows.length !== colors.length || colors.some(([date, color]) => result[date] !== color))) {
       throw new Error('Цвета календаря SQLite не совпадают с localStorage');
     }
-    console.log(`✅ SQLite calendar colors read: ${rows.length} дат загружено из SQLite в Redux; синхронизация localStorage ${colors === null ? 'не требовалась' : 'выполнена'}`);
+    // Set the marker only after SQLite has been read and verified successfully.
+    // On future launches SQLite is authoritative, including when all colors were removed.
+    localStorage.setItem(handoverKey, '1');
+    console.log(`✅ SQLite calendar colors read: ${rows.length} дат загружено из SQLite в Redux; запись цветов теперь в SQLite`);
     return result;
   } finally {
     await db.close();

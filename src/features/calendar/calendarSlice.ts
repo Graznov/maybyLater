@@ -1,4 +1,5 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
+import { isTauri } from '@tauri-apps/api/core';
 
 const STORAGE_KEY = 'maybeLater.calendarColors.v1';
 
@@ -41,11 +42,11 @@ const calendarSlice = createSlice({
       action: PayloadAction<{ date: string; color: string }>,
     ) {
       state.dateColors[action.payload.date] = action.payload.color;
-      persistDateColors(state.dateColors);
+      if (!isTauri()) persistDateColors(state.dateColors);
     },
     clearDateColor(state, action: PayloadAction<string>) {
       delete state.dateColors[action.payload];
-      persistDateColors(state.dateColors);
+      if (!isTauri()) persistDateColors(state.dateColors);
     },
   },
 });

@@ -8,6 +8,7 @@ import { deleteEntryInSqlite } from '../db/deleteEntry';
 import { loadEntriesFromSqlite } from '../db/loadEntries';
 import type { Entry } from '../types/entry';
 import { savePreferencesToSqlite } from '../db/savePreferences';
+import { saveCalendarColor } from '../db/saveCalendarColor';
 import entriesReducer from '../features/entries/entriesSlice';
 import tagsReducer from '../features/tags/tagsSlice';
 import calendarReducer from '../features/calendar/calendarSlice';
@@ -157,8 +158,51 @@ const sqlitePreferencesWriter: Middleware = api => next => action => {
   return result;
 };
 
+// Calendar color writes are serialized to preserve action order (including deletes).
+let calendarWriteQueue: Promise<void> = Promise.resolve();
+let calendarWriteFailed = false;
+export async function waitForSqliteCalendarWrites(): Promise<void> {
+  await calendarWriteQueue;
+  if (calendarWriteFailed) throw new Error('Сохранение цветов календаря SQLite завершилось ошибкой');
+}
+const sqliteCalendarWriter: Middleware = () => next => action => {
+  if (!isTauri() || typeof action !== 'object' || action === null || !('type' in action) ||
+      (action.type !== 'calendar/setDateColor' && action.type !== 'calendar/clearDateColor')) return next(action);
+  if (calendarWriteFailed) {
+    console.error('❌ SQLite calendar: изменение заблокировано после ошибки сохранения');
+    return action;
+  }
+  const payload = (action as { payload?: unknown }).payload;
+  let date: string;
+  let color: string | null;
+  if (action.type === 'calendar/setDateColor') {
+    const value = payload as { date?: string; color?: string } | undefined;
+    if (typeof value?.date !== 'string' || typeof value.color !== 'string') return action;
+    date = value.date;
+    color = value.color;
+  } else {
+    if (typeof payload !== 'string') return action;
+    date = payload;
+    color = null;
+  }
+  const result = next(action);
+  calendarWriteQueue = calendarWriteQueue.then(async () => {
+    if (calendarWriteFailed) return;
+    try {
+      await saveCalendarColor(date, color);
+      console.log(`✅ SQLite calendar colors write: ${date} ${color === null ? 'удалён' : 'сохранён'}`);
+    } catch (error) {
+      calendarWriteFailed = true;
+      console.error('❌ SQLite calendar colors write: сохранение не выполнено', error);
+      window.dispatchEvent(new CustomEvent('sqlite-save-error', { detail: `Календарь SQLite: ${String(error)}` }));
+      window.alert('Не удалось сохранить цвет даты в SQLite. Изменения заблокированы до перезапуска приложения.');
+    }
+  });
+  return result;
+};
+
 export const store = configureStore({
-  middleware: getDefaultMiddleware => getDefaultMiddleware().concat(readOnlyGuard, sqlitePreferencesWriter),
+  middleware: getDefaultMiddleware => getDefaultMiddleware().concat(readOnlyGuard, sqlitePreferencesWriter, sqliteCalendarWriter),
   reducer: {
     entries: entriesReducer,
     tags: tagsReducer,
