@@ -15,18 +15,11 @@ import './index.css';
 
 const root = createRoot(document.getElementById('root')!);
 
-function renderApp(sqliteMode: boolean) {
+function renderApp() {
   root.render(
     <StrictMode>
       <Provider store={store}>
         <BrowserRouter>
-          {sqliteMode && (
-            <div style={{position:'fixed',top:38,right:14,zIndex:99999,padding:'8px 14px',
-              background:'#283e58',color:'#fff',border:'1px solid #7190af',
-              borderRadius:10,fontSize:12,pointerEvents:'none'}}>
-              SQLite: создание, редактирование, дублирование и удаление включены; теги сохраняются в SQLite
-            </div>
-          )}
           <App />
         </BrowserRouter>
       </Provider>
@@ -36,7 +29,7 @@ function renderApp(sqliteMode: boolean) {
 
 async function bootstrap() {
   if (!isTauri()) {
-    renderApp(false);
+    renderApp();
     return;
   }
   try {
@@ -49,11 +42,9 @@ async function bootstrap() {
     console.log(`✅ SQLite tags integration: ${tags.length} тегов загружено из SQLite`);
     const preferences = await loadPreferencesFromSqlite(store.getState().preferences);
     store.dispatch(hydratePreferences(preferences));
-    console.info('ℹ️ SQLite preferences: чтение и запись настроек выполняются в SQLite.');
     enableSqliteReadOnly();
     console.log(`✅ SQLite integration: ${entries.length} записей загружено в Redux непосредственно из SQLite`);
-    console.log('🔒 SQLite integration: создание, редактирование, дублирование и удаление включены; операции с тегами включены; localStorage не изменён.');
-    renderApp(true);
+    renderApp();
   } catch (error) {
     console.error('❌ SQLite integration: ошибка загрузки', error);
     // Fail closed. Do not silently fall back to a potentially stale localStorage copy.
