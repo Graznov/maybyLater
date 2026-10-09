@@ -64,6 +64,9 @@ const preferencesSlice = createSlice({
   name: 'preferences',
   initialState: loadPreferences(),
   reducers: {
+    hydratePreferences(_state, action: PayloadAction<PreferencesState>) {
+      return action.payload;
+    },
     setJournalName(state, action: PayloadAction<string>) {
       const value = action.payload.trim();
       if (value) state.journalName = value;
@@ -79,5 +82,5 @@ const preferencesSlice = createSlice({
   },
 });
 
-export const { setJournalName, setPreference } = preferencesSlice.actions;
+export const { hydratePreferences, setJournalName, setPreference } = preferencesSlice.actions;
 export default preferencesSlice.reducer;
