@@ -268,6 +268,12 @@ pub fn run() {
             sql: "CREATE TABLE IF NOT EXISTS preferences (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 6,
+            description: "create calendar date colors table",
+            sql: "CREATE TABLE IF NOT EXISTS calendar_colors (date TEXT PRIMARY KEY NOT NULL, color TEXT NOT NULL);",
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()

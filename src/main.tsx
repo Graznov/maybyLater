@@ -11,6 +11,7 @@ import { hydrateTags } from './features/tags/tagsSlice';
 import App from './App';
 import { loadPreferencesFromSqlite } from './db/loadPreferences';
 import { hydratePreferences } from './features/preferences/preferencesSlice';
+import { migrateCalendarColorsToSqlite } from './db/migrateCalendarColors';
 import './index.css';
 
 const root = createRoot(document.getElementById('root')!);
@@ -42,6 +43,7 @@ async function bootstrap() {
     console.log(`✅ SQLite tags integration: ${tags.length} тегов загружено из SQLite`);
     const preferences = await loadPreferencesFromSqlite(store.getState().preferences);
     store.dispatch(hydratePreferences(preferences));
+    await migrateCalendarColorsToSqlite();
     enableSqliteReadOnly();
     console.log(`✅ SQLite integration: ${entries.length} записей загружено в Redux непосредственно из SQLite`);
     renderApp();
