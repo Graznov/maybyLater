@@ -9,6 +9,7 @@ import { loadEntriesFromSqlite } from './db/loadEntries';
 import { loadTagsFromSqlite } from './db/tagsRepository';
 import { hydrateTags } from './features/tags/tagsSlice';
 import App from './App';
+import { testPreferencesMigration } from './db/testPreferencesMigration';
 import './index.css';
 
 const root = createRoot(document.getElementById('root')!);
@@ -45,6 +46,7 @@ async function bootstrap() {
     const tags = await loadTagsFromSqlite();
     store.dispatch(hydrateTags(tags));
     console.log(`✅ SQLite tags integration: ${tags.length} тегов загружено из SQLite`);
+    await testPreferencesMigration(store.getState().preferences);
     enableSqliteReadOnly();
     console.log(`✅ SQLite integration: ${entries.length} записей загружено в Redux непосредственно из SQLite`);
     console.log('🔒 SQLite integration: создание, редактирование, дублирование и удаление включены; операции с тегами включены; localStorage не изменён.');

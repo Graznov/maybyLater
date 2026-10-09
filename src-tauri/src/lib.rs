@@ -244,6 +244,12 @@ pub fn run() {
             "#,
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 5,
+            description: "create preferences snapshot table",
+            sql: "CREATE TABLE IF NOT EXISTS preferences (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);",
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
