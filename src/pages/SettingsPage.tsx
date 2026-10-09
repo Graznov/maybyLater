@@ -4,8 +4,10 @@ import { useAppDispatch, useAppSelector } from '../app/hooks';
 import { setJournalName, setPreference, type PreferencesState } from '../features/preferences/preferencesSlice';
 import { Modal } from '../components/Modal/Modal';
 import './SettingsPage.css';
+import { makeBackup, validateBackup, restoreBackup, BACKUP_KEYS } from '../db/backup';
+import { isTauri, invoke } from '@tauri-apps/api/core';
 
-const APP_KEYS = ['maybeLater.entries.v1', 'maybeLater.tags.v1', 'maybeLater.calendarColors.v1', 'maybeLater.preferences.v1'];
+const APP_KEYS = BACKUP_KEYS;
 
 export function SettingsPage() {
   const dispatch = useAppDispatch();
@@ -13,38 +15,83 @@ export function SettingsPage() {
   const english = p.language === 'en';
   const fileRef = useRef<HTMLInputElement>(null);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [pendingImport, setPendingImport] = useState<ReturnType<typeof validateBackup> | null>(null);
+  const [backupError, setBackupError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [restoreCheck, setRestoreCheck] = useState('');
+  const [diskCheck, setDiskCheck] = useState('');
+  const [snapshotCheck, setSnapshotCheck] = useState('');
+  const [confirmRealRestore, setConfirmRealRestore] = useState(false);
+  const [restoreNotice] = useState(() => { const notice = sessionStorage.getItem('maybeLater.restoreNotice'); if (notice) sessionStorage.removeItem('maybeLater.restoreNotice'); return notice; });
 
   const set = <K extends keyof PreferencesState>(key: K, value: PreferencesState[K]) => {
     dispatch(setPreference({ key, value }));
   };
 
-  const exportData = () => {
-    const data = Object.fromEntries(APP_KEYS.map((key) => [key, localStorage.getItem(key)]));
-    const blob = new Blob([JSON.stringify({ app: 'Maybe Later Journal', version: 1, data }, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `maybe-later-backup-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const exportData = async () => {
+    setBusy(true); setBackupError('');
+    try {
+      const content = await makeBackup();
+      const blob = new Blob([content], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `maybe-later-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 3000);
+    } catch (error) { setBackupError(String(error)); }
+    finally { setBusy(false); }
   };
 
   const importData = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
+    event.target.value = '';
     if (!file) return;
+    try { setBackupError(''); setRestoreCheck(''); setDiskCheck(''); setSnapshotCheck(''); setConfirmRealRestore(false); setPendingImport(validateBackup(await file.text())); }
+    catch (error) { setBackupError(String(error)); }
+  };
+
+  const verifyImport = async () => {
+    if (!pendingImport || !isTauri()) return;
+    setBusy(true); setBackupError(''); setRestoreCheck(''); setDiskCheck(''); setSnapshotCheck('');
     try {
-      const backup = JSON.parse(await file.text());
-      APP_KEYS.forEach((key) => {
-        const value = backup?.data?.[key];
-        if (typeof value === 'string') localStorage.setItem(key, value);
-      });
-      window.location.reload();
-    } catch {
-      event.target.value = '';
-    }
+      const result = await invoke<string>('verify_sqlite_restore', { payload: { entries: pendingImport.entries, tags: pendingImport.tags } });
+      setRestoreCheck(`✅ ${result}`);
+    } catch (error) { setBackupError(`Проверка восстановления: ${String(error)}`); }
+    finally { setBusy(false); }
+  };
+
+  const testOnDiskCopy = async () => {
+    if (!pendingImport || !restoreCheck || !isTauri()) return;
+    setBusy(true); setBackupError(''); setDiskCheck(''); setSnapshotCheck('');
+    try {
+      const result = await invoke<string>('test_sqlite_restore_on_copy', { payload: { entries: pendingImport.entries, tags: pendingImport.tags } });
+      setDiskCheck(`✅ ${result}`);
+    } catch (error) { setBackupError(`Тест на копии SQLite: ${String(error)}`); }
+    finally { setBusy(false); }
+  };
+
+  const testSafetySnapshot = async () => {
+    if (!pendingImport || !restoreCheck || !diskCheck || !isTauri()) return;
+    setBusy(true); setBackupError(''); setSnapshotCheck('');
+    try {
+      const result = await invoke<string>('test_sqlite_safety_snapshot');
+      setSnapshotCheck(`✅ ${result}`);
+    } catch (error) { setBackupError(`Проверка защитной копии: ${String(error)}`); }
+    finally { setBusy(false); }
+  };
+
+  const doRealRestore = async () => {
+    if (!pendingImport || !restoreCheck || !diskCheck || !snapshotCheck || !isTauri()) return;
+    setBusy(true); setBackupError('');
+    try { await restoreBackup(pendingImport); }
+    catch (error) { setConfirmRealRestore(false); setBackupError(`Восстановление не выполнено: ${String(error)}`); }
+    finally { setBusy(false); }
   };
 
   const resetAll = () => {
+    if (isTauri()) { setConfirmReset(false); setBackupError('Удаление всех данных SQLite пока не реализовано. Данные не изменены.'); return; }
     APP_KEYS.forEach((key) => localStorage.removeItem(key));
     window.location.reload();
   };
@@ -57,6 +104,7 @@ export function SettingsPage() {
         <p>{english ? 'Make the journal comfortable for the way you write.' : 'Настройте дневник так, чтобы им было удобно пользоваться именно вам.'}</p>
       </header>
 
+      {restoreNotice && <p role="status" style={{padding:'12px 24px',overflowWrap:'anywhere'}}>{restoreNotice}</p>}
       <div className="settings-scroll page-scroll">
       <div className="settings-grid">
         <SettingsSection icon={<Palette />} title={english ? 'Appearance' : 'Внешний вид'} description={english ? 'Theme and workspace appearance.' : 'Тема и внешний вид рабочего пространства.'}>
@@ -92,10 +140,11 @@ export function SettingsPage() {
 
         <SettingsSection icon={<Database />} title={english ? 'Data' : 'Данные'} description={english ? 'Backup or move your local journal.' : 'Резервная копия и перенос локального дневника.'}>
           <div className="settings-actions">
-            <button className="settings-action" onClick={exportData}><Download size={18} />{english ? 'Export JSON' : 'Экспорт JSON'}</button>
-            <button className="settings-action" onClick={() => fileRef.current?.click()}><Upload size={18} />{english ? 'Import JSON' : 'Импорт JSON'}</button>
+            <button className="settings-action" disabled={busy} onClick={exportData}><Download size={18} />{english ? 'Export JSON' : 'Экспорт JSON'}</button>
+            <button className="settings-action" disabled={busy} onClick={() => fileRef.current?.click()}><Upload size={18} />{english ? 'Import JSON' : 'Импорт JSON'}</button>
             <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={importData} />
           </div>
+          {backupError && <p role="alert" style={{color:'#ff9999',overflowWrap:'anywhere'}}>{backupError}</p>}
         </SettingsSection>
 
         <SettingsSection danger icon={<Trash2 />} title={english ? 'Danger zone' : 'Опасная зона'} description={english ? 'These actions cannot be undone.' : 'Эти действия нельзя отменить.'}>
@@ -106,6 +155,18 @@ export function SettingsPage() {
       <div className="settings-about"><strong>Maybe Later Journal</strong><span>Browser MVP · v0.8</span><small>{english ? 'Your journal is stored locally in this browser.' : 'Ваш дневник хранится локально в этом браузере.'}</small></div>
 
       </div>
+      <Modal open={!!pendingImport} title={english ? 'Restore backup?' : 'Восстановить резервную копию?'} onClose={() => !busy && (setPendingImport(null), setConfirmRealRestore(false))} footer={<><button className="modal__button" disabled={busy} onClick={() => { setPendingImport(null); setConfirmRealRestore(false); }}>{english ? 'Cancel' : 'Отмена'}</button><button className="modal__button" disabled={busy || !isTauri()} onClick={verifyImport}>{busy ? '...' : (english ? 'Check' : 'Проверить')}</button><button className="modal__button modal__button--danger" disabled={busy || !restoreCheck || !diskCheck || !snapshotCheck || !isTauri()} onClick={() => setConfirmRealRestore(true)}>{english ? 'Restore…' : 'Восстановить…'}</button></>}>
+        <p>{english ? 'First verify in memory, then test on a disk copy and verify a safety snapshot. Real restore REPLACES all current entries and tags. A separate SQLite snapshot is saved before replacement.' : 'Сначала проверьте копию в памяти, затем выполните тест на дисковой копии и проверку защитного снимка. Настоящее восстановление ЗАМЕНИТ все текущие записи и теги. Перед заменой будет сохранена отдельная копия SQLite.'}</p>
+        <p>{pendingImport?.entries.length ?? 0} {english ? 'entries' : 'записей'}, {pendingImport?.tags.length ?? 0} {english ? 'tags' : 'тегов'}.</p>{restoreCheck && <p role="status" style={{overflowWrap:'anywhere'}}>{restoreCheck}</p>}
+        {restoreCheck && <button type="button" className="modal__button" disabled={busy || !isTauri()} onClick={testOnDiskCopy}>{english ? 'Test on SQLite copy' : 'Тест на копии SQLite'}</button>}
+        {diskCheck && <button type="button" className="modal__button" disabled={busy || !isTauri()} onClick={testSafetySnapshot}>{english ? 'Verify safety snapshot' : 'Проверить защитную копию'}</button>}
+        {snapshotCheck && <p role="status" style={{overflowWrap:'anywhere'}}>{snapshotCheck}</p>}
+        {diskCheck && <p role="status" style={{overflowWrap:'anywhere'}}>{diskCheck}</p>}{backupError && <p role="alert" style={{color:'#ff9999',overflowWrap:'anywhere'}}>{backupError}</p>}
+      </Modal>
+      <Modal open={confirmRealRestore} title={english ? 'Confirm real restore' : 'Подтвердить настоящее восстановление'} onClose={() => !busy && setConfirmRealRestore(false)} footer={<><button className="modal__button" disabled={busy} onClick={() => setConfirmRealRestore(false)}>{english ? 'Cancel' : 'Отмена'}</button><button className="modal__button modal__button--danger" disabled={busy} onClick={doRealRestore}>{busy ? '...' : (english ? 'Replace entries and tags' : 'Заменить записи и теги')}</button></>}>
+        <p>{english ? 'This will replace all entries and tags in your real SQLite database. Existing entries not in the backup will disappear. A safety snapshot of the old database will be created automatically.' : 'Все записи и теги настоящей SQLite будут заменены данными из JSON. Записи, которых нет в копии, исчезнут из дневника. Старая база будет автоматически сохранена отдельным файлом.'}</p>
+        <p><strong>{pendingImport?.entries.length ?? 0} {english ? 'entries' : 'записей'}, {pendingImport?.tags.length ?? 0} {english ? 'tags' : 'тегов'}</strong></p>
+      </Modal>
       <Modal open={confirmReset} title={english ? 'Delete all data?' : 'Удалить все данные?'} onClose={() => setConfirmReset(false)} footer={<><button className="modal__button" onClick={() => setConfirmReset(false)}>{english ? 'Cancel' : 'Отмена'}</button><button className="modal__button modal__button--danger" onClick={resetAll}>{english ? 'Delete' : 'Удалить'}</button></>}>
         <p>{english ? 'Entries, tags, calendar colors and settings will be deleted from this browser.' : 'Записи, теги, цвета календаря и настройки будут удалены из этого браузера.'}</p>
       </Modal>

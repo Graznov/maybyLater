@@ -104,6 +104,7 @@
   border: 1px solid var(--border);
   border-radius: 10px;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .modal__button:hover {
