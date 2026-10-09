@@ -331,3 +331,7 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Reserve top-right space for native-style window controls. */
+.year-calendar-toolbar { padding-right: 166px; }
+.year-calendar-toolbar__actions { flex-wrap: wrap; }

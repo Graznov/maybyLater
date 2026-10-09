@@ -183,3 +183,13 @@
     justify-content: center;
   }
 }
+
+/* Scroll within the Tauri window rather than growing beyond the viewport. */
+.tags-page { height: 100%; max-height: 100%; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior-y: contain; }
+
+/* Fixed panel header and creation form; scroll only the tag rows. */
+.tags-page { display:flex; flex-direction:column; overflow:hidden; padding:clamp(16px,3vh,36px) 46px; }
+.tags-page__panel { display:flex; flex-direction:column; min-height:0; max-height:100%; }
+.tags-page__header,.tag-create { flex-shrink:0; }
+.tag-list { flex:1 1 auto; min-height:0; overflow-y:auto; overflow-x:hidden; overscroll-behavior:contain; scrollbar-width:thin; }
+@media(max-width:700px){.tags-page{height:100%;min-height:0;padding:12px}.tags-page__panel{max-height:100%}}

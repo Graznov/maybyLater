@@ -1,3 +1,24 @@
 *{box-sizing:border-box}html,body,#root{width:100%;height:100%;margin:0}:root{--bg:#edf1f6;--panel:#fff;--panel-soft:#f7f9fc;--text:#172033;--muted:#6e7b90;--border:#e3e8ef;--accent:#2f74dc;--accent-soft:#e9f1ff;--card:#fff;--shadow:0 10px 30px rgba(30,45,70,.08)}:root[data-theme="dark"]{--bg:#101722;--panel:#17202c;--panel-soft:#1c2735;--text:#e9eef6;--muted:#9ba9bb;--border:#2b3747;--accent:#6da2f2;--accent-soft:#223b5f;--card:#1b2633;--shadow:0 12px 34px rgba(0,0,0,.24)}body{min-width:320px;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);transition:background .2s,color .2s}button,input,textarea{font:inherit}button{touch-action:manipulation}::selection{background:#cfe0ff}:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 html,body,#root{height:100%;min-height:0;width:100%;margin:0;overflow:hidden;overscroll-behavior:none}#root{isolation:isolate}
+
+/* Experimental translucent desktop surface; disabled by default. */
+:root[data-window-transparency="true"] {
+  --bg: rgba(237, 241, 246, .84);
+  --panel: rgba(255, 255, 255, .87);
+  --panel-soft: rgba(247, 249, 252, .86);
+  --card: rgba(255, 255, 255, .89);
+}
+:root[data-theme="dark"][data-window-transparency="true"] {
+  --bg: rgba(16, 23, 34, .82);
+  --panel: rgba(23, 32, 44, .85);
+  --panel-soft: rgba(28, 39, 53, .85);
+  --card: rgba(27, 38, 51, .88);
+}
+:root[data-window-transparency="true"],
+:root[data-window-transparency="true"] body,
+:root[data-window-transparency="true"] #root,
+:root[data-window-transparency="true"] .desktop-shell {
+  background-color: transparent;
+}
+:root[data-window-transparency="true"] .main-layout { background: var(--bg); }

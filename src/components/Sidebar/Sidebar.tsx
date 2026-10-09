@@ -59,12 +59,14 @@ export function Sidebar() {
         <div className="sidebar__divider" />
         <div className="sidebar__tags">
           <strong>{t('tags')}</strong>
+          <div className="sidebar__tags-list">
           {tags.map((tag) => (
             <button type="button" key={tag.id} className={activeTag === tag.name ? 'selected' : ''} onClick={() => dispatch(setTag(activeTag === tag.name ? null : tag.name))}>
               <i style={{ background: tag.color }} />
               <span>{tag.name}</span>
             </button>
           ))}
+          </div>
           <NavLink to="/tags" className="sidebar__new-tag"><span>＋</span>{t('newTag')}</NavLink>
         </div>
 

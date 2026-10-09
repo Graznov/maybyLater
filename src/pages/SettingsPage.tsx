@@ -57,12 +57,15 @@ export function SettingsPage() {
         <p>{english ? 'Make the journal comfortable for the way you write.' : 'Настройте дневник так, чтобы им было удобно пользоваться именно вам.'}</p>
       </header>
 
+      <div className="settings-scroll page-scroll">
       <div className="settings-grid">
         <SettingsSection icon={<Palette />} title={english ? 'Appearance' : 'Внешний вид'} description={english ? 'Theme and workspace appearance.' : 'Тема и внешний вид рабочего пространства.'}>
           <SettingRow label={english ? 'Theme' : 'Тема'}>
             <Segmented value={p.theme} onChange={(v) => set('theme', v as PreferencesState['theme'])} options={english ? [['system','System'],['light','Light'],['dark','Dark']] : [['system','Системная'],['light','Светлая'],['dark','Тёмная']]} />
           </SettingRow>
           <SettingRow label={english ? 'Sidebar mountain background' : 'Горный фон Sidebar'}><Switch checked={p.sidebarBackground} onChange={(v) => set('sidebarBackground', v)} /></SettingRow>
+          <SettingRow label={english ? 'Translucent window (experimental)' : 'Полупрозрачное окно (экспериментально)'}><Switch checked={p.windowTransparency} onChange={(v) => set('windowTransparency', v)} /></SettingRow>
+          <p className="transparency-hint">{english ? 'Restart the desktop app if the effect is not visible. Disable to restore the original appearance.' : 'Если эффект не виден, перезапустите приложение. Выключите переключатель, чтобы вернуть прежний вид.'}</p>
         </SettingsSection>
 
         <SettingsSection icon={<Languages />} title={english ? 'Language' : 'Язык'} description={english ? 'Interface language. Your entries are never translated.' : 'Язык интерфейса. Текст ваших записей не переводится.'}>
@@ -102,6 +105,7 @@ export function SettingsPage() {
 
       <div className="settings-about"><strong>Maybe Later Journal</strong><span>Browser MVP · v0.8</span><small>{english ? 'Your journal is stored locally in this browser.' : 'Ваш дневник хранится локально в этом браузере.'}</small></div>
 
+      </div>
       <Modal open={confirmReset} title={english ? 'Delete all data?' : 'Удалить все данные?'} onClose={() => setConfirmReset(false)} footer={<><button className="modal__button" onClick={() => setConfirmReset(false)}>{english ? 'Cancel' : 'Отмена'}</button><button className="modal__button modal__button--danger" onClick={resetAll}>{english ? 'Delete' : 'Удалить'}</button></>}>
         <p>{english ? 'Entries, tags, calendar colors and settings will be deleted from this browser.' : 'Записи, теги, цвета календаря и настройки будут удалены из этого браузера.'}</p>
       </Modal>

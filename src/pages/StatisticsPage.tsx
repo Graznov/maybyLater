@@ -148,6 +148,7 @@ export function StatisticsPage() {
         <div className="statistics-year">{year}</div>
       </header>
 
+      <div className="statistics-scroll page-scroll">
       <section className="stat-cards">
         <article className="stat-card">
           <span className="stat-icon"><BookOpenText size={20} /></span>
@@ -224,6 +225,7 @@ export function StatisticsPage() {
           <div><span>Первая запись</span><strong>{stats.firstDate ? format(new Date(`${stats.firstDate}T12:00:00`), 'd MMMM yyyy', { locale: ru }) : '—'}</strong></div>
         </div>
       </section>
+      </div>
     </main>
   );
 }

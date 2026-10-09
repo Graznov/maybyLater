@@ -14,6 +14,7 @@ export type PreferencesState = {
   editorFontSize: EditorFontSize;
   editorWidth: EditorWidth;
   sidebarBackground: boolean;
+  windowTransparency: boolean;
   autosave: boolean;
   autosaveDelay: number;
   showToolbar: boolean;
@@ -33,6 +34,7 @@ const defaults: PreferencesState = {
   editorFontSize: 'medium',
   editorWidth: 'normal',
   sidebarBackground: true,
+  windowTransparency: false,
   autosave: true,
   autosaveDelay: 500,
   showToolbar: true,

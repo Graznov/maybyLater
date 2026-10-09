@@ -1,15 +1,16 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
 import type { Entry } from '../../types/entry';
-import { seedEntries } from '../../data/seed';
 
 const STORAGE_KEY = 'maybeLater.entries.v1';
 
 function loadEntries(): Entry[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : seedEntries;
+    if (raw === null) return [];
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as Entry[]) : [];
   } catch {
-    return seedEntries;
+    return [];
   }
 }
 

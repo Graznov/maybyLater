@@ -19,6 +19,7 @@ export function MainLayout() {
       document.documentElement.dataset.editorFont = preferences.editorFontSize;
       document.documentElement.dataset.editorWidth = preferences.editorWidth;
       document.documentElement.dataset.sidebarBackground = String(preferences.sidebarBackground);
+      document.documentElement.dataset.windowTransparency = String(preferences.windowTransparency);
     };
     apply();
     media.addEventListener('change', apply);

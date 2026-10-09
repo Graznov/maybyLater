@@ -128,6 +128,22 @@ export function Editor() {
   const updatedAt = entry.updatedAt ? new Date(entry.updatedAt) : createdAt;
   const datePattern = preferences.timeFormat === '12h' ? 'd MMMM yyyy, hh:mm a' : 'd MMMM yyyy, HH:mm';
   const formatDateTime = (date: Date) => format(date, datePattern, { locale: ru });
+  const today = new Date();
+  const [entryYear, entryMonth, entryDay] = entry.date.split('-').map(Number);
+  const daysRemaining = Math.round((Date.UTC(entryYear, entryMonth - 1, entryDay) -
+    Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())) / 86400000);
+  const dayWord = (days: number) => {
+    if (days % 10 === 1 && days % 100 !== 11) return 'день';
+    if ([2, 3, 4].includes(days % 10) && ![12, 13, 14].includes(days % 100)) return 'дня';
+    return 'дней';
+  };
+  const absoluteDays = Math.abs(daysRemaining);
+  const elapsedLabel = daysRemaining > 0
+    ? { label: 'Осталось', value: `${absoluteDays} ${dayWord(absoluteDays)}` }
+    : daysRemaining < 0
+      ? { label: absoluteDays === 1 ? 'Прошёл' : 'Прошло', value: `${absoluteDays} ${dayWord(absoluteDays)}` }
+      : { label: 'Дата записи', value: 'Сегодня' };
+
 
   const toggleTag = (tagName: string) => {
     const tags = entry.tags.includes(tagName) ? entry.tags.filter((tag) => tag !== tagName) : [...entry.tags, tagName];
@@ -158,6 +174,7 @@ export function Editor() {
         <div className="editor__meta">
           <div><span>Создано</span><strong>{formatDateTime(createdAt)}</strong></div>
           <div><span>Изменено</span><strong>{formatDateTime(updatedAt)}</strong></div>
+          <div className="editor__remaining"><span>{elapsedLabel.label}</span><strong>{elapsedLabel.value}</strong></div>
         </div>
 
         <div className="editor__actions">

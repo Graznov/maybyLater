@@ -220,3 +220,15 @@
 }
 
 .sidebar__quote{scrollbar-width:none;-ms-overflow-style:none;overscroll-behavior:contain}.sidebar__quote::-webkit-scrollbar{display:none}
+
+/* Keep navigation and settings visible when there are many tags. */
+.sidebar { height: 100%; min-height: 0; }
+.sidebar__logo, .sidebar nav, .sidebar__divider, .sidebar__bottom { flex-shrink: 0; }
+.sidebar__tags { min-height: 0; flex: 0 1 auto; }
+.sidebar__tags strong, .sidebar__new-tag { flex-shrink: 0; }
+.sidebar__tags-list { display: flex; flex-direction: column; min-height: 0; max-height: min(280px, 35dvh); overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: rgba(180,200,220,.45) transparent; }
+.sidebar__tags-list button { flex: 0 0 35px; width: 100%; min-width: 0; }
+.sidebar__tags-list button span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.sidebar__tags-list i { flex: 0 0 9px; }
+.sidebar__quote { min-height: 0; flex-shrink: 1; }
+.sidebar__bottom { margin-top: auto; }

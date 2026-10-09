@@ -431,3 +431,5 @@
 /* Reserve space for the three window control buttons. */
 .editor .editor__header{padding-right:158px}
 @media(max-width:900px){.editor .editor__header{padding-right:158px}}
+
+.editor__remaining strong { color: var(--accent); }
