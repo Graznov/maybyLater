@@ -8,13 +8,26 @@ struct BackupEntry { id: String, title: String, content: String, date: String, t
 #[derive(Deserialize, Serialize, Clone)]
 struct BackupTag { id: String, name: String, color: String }
 #[derive(Deserialize, Clone)]
-struct BackupPayload { entries: Vec<BackupEntry>, tags: Vec<BackupTag>, preferences: Option<serde_json::Value> }
+#[serde(rename_all = "camelCase")]
+struct BackupPayload { entries: Vec<BackupEntry>, tags: Vec<BackupTag>, preferences: Option<serde_json::Value>, calendar_colors: Option<std::collections::BTreeMap<String, String>> }
 
 fn verify_preferences(conn: &rusqlite::Connection, payload: &BackupPayload) -> Result<(), String> {
     if let Some(expected) = &payload.preferences {
         let raw: String = conn.query_row("SELECT value FROM preferences WHERE key=?1", ["preferences.v1"], |r| r.get(0)).map_err(|e| e.to_string())?;
         let actual: serde_json::Value = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
         if &actual != expected { return Err("Настройки после восстановления не совпадают".into()); }
+    }
+    Ok(())
+}
+
+fn verify_calendar_colors(conn: &rusqlite::Connection, payload: &BackupPayload) -> Result<(), String> {
+    if let Some(expected) = &payload.calendar_colors {
+        let mut stmt = conn.prepare("SELECT date, color FROM calendar_colors ORDER BY date").map_err(|e| e.to_string())?;
+        let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+            .map_err(|e| e.to_string())?;
+        let actual = rows.collect::<rusqlite::Result<std::collections::BTreeMap<String, String>>>()
+            .map_err(|e| e.to_string())?;
+        if &actual != expected { return Err("Цвета календаря после восстановления не совпадают".into()); }
     }
     Ok(())
 }
@@ -37,6 +50,13 @@ fn apply_backup(conn: &mut rusqlite::Connection, payload: &BackupPayload) -> Res
     if let Some(preferences) = &payload.preferences {
         let json = serde_json::to_string(preferences).map_err(|e| e.to_string())?;
         tx.execute("INSERT INTO preferences (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value=excluded.value", rusqlite::params!["preferences.v1", json]).map_err(|e| e.to_string())?;
+    }
+    if let Some(colors) = &payload.calendar_colors {
+        tx.execute("DELETE FROM calendar_colors", []).map_err(|e| e.to_string())?;
+        for (date, color) in colors {
+            tx.execute("INSERT INTO calendar_colors (date, color) VALUES (?1, ?2)",
+                rusqlite::params![date, color]).map_err(|e| e.to_string())?;
+        }
     }
     tx.commit().map_err(|e| e.to_string())
 }
@@ -82,9 +102,10 @@ fn test_sqlite_safety_snapshot(app: tauri::AppHandle) -> Result<String, String> 
             ("entries", "id, title, content, date, tags, created_at, updated_at"),
             ("tags", "id, name, color"),
             ("preferences", "key, value"),
+            ("calendar_colors", "date, color"),
         ] {
             // preferences is keyed by `key`, unlike entries and tags (keyed by `id`).
-            let order_column = if table == "preferences" { "key" } else { "id" };
+            let order_column = match table { "preferences" => "key", "calendar_colors" => "date", _ => "id" };
             let sql = format!("SELECT {columns} FROM {table} ORDER BY {order_column}");
             let read = |conn: &rusqlite::Connection| -> Result<Vec<Vec<String>>, String> {
                 let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
@@ -151,6 +172,7 @@ fn test_sqlite_restore_on_copy(app: tauri::AppHandle, payload: BackupPayload) ->
         if stored != (tag.name.clone(), tag.color.clone()) { return Err(format!("Не совпадает тег {}", tag.id)); }
     }
     verify_preferences(&copy, &payload)?;
+    verify_calendar_colors(&copy, &payload)?;
     drop(copy);
     Ok(format!("Тест на дисковой копии пройден: {} записей, {} тегов. Основная база не изменялась.", entry_count, tag_count))
 }
@@ -159,7 +181,7 @@ fn test_sqlite_restore_on_copy(app: tauri::AppHandle, payload: BackupPayload) ->
 #[tauri::command]
 fn verify_sqlite_restore(payload: BackupPayload) -> Result<String, String> {
     let mut conn = rusqlite::Connection::open_in_memory().map_err(|e| e.to_string())?;
-    conn.execute_batch("CREATE TABLE entries (id TEXT PRIMARY KEY NOT NULL, title TEXT NOT NULL, content TEXT NOT NULL, date TEXT NOT NULL, tags TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL); CREATE TABLE tags (id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, color TEXT NOT NULL); CREATE TABLE preferences (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);")
+    conn.execute_batch("CREATE TABLE entries (id TEXT PRIMARY KEY NOT NULL, title TEXT NOT NULL, content TEXT NOT NULL, date TEXT NOT NULL, tags TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL); CREATE TABLE tags (id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, color TEXT NOT NULL); CREATE TABLE preferences (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL); CREATE TABLE calendar_colors (date TEXT PRIMARY KEY NOT NULL, color TEXT NOT NULL);")
         .map_err(|e| e.to_string())?;
     apply_backup(&mut conn, &payload)?;
     let entry_count: i64 = conn.query_row("SELECT COUNT(*) FROM entries", [], |r| r.get(0)).map_err(|e| e.to_string())?;
@@ -181,6 +203,7 @@ fn verify_sqlite_restore(payload: BackupPayload) -> Result<String, String> {
         if stored != (tag.name.clone(), tag.color.clone()) { return Err(format!("Несовпадение тега {}", tag.id)); }
     }
     verify_preferences(&conn, &payload)?;
+    verify_calendar_colors(&conn, &payload)?;
     // Force a UNIQUE violation midway through a second restore, then verify rollback.
     // This exercises the same apply_backup function used by production restore.
     if let Some(first) = payload.entries.first() {
@@ -189,6 +212,8 @@ fn verify_sqlite_restore(payload: BackupPayload) -> Result<String, String> {
         if apply_backup(&mut conn, &invalid).is_ok() { return Err("Не сработала проверка отката транзакции".into()); }
         let after: i64 = conn.query_row("SELECT COUNT(*) FROM entries", [], |r| r.get(0)).map_err(|e| e.to_string())?;
         if after != entry_count { return Err("После ошибки транзакция изменила тестовую базу".into()); }
+        verify_preferences(&conn, &payload)?;
+        verify_calendar_colors(&conn, &payload)?;
     }
     Ok(format!("Проверено {} записей и {} тегов; содержимое совпадает, откат транзакции работает. Основная база не затронута.", entry_count, tag_count))
 }

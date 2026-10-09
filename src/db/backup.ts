@@ -1,14 +1,15 @@
 import { isTauri, invoke } from '@tauri-apps/api/core';
+import Database from '@tauri-apps/plugin-sql';
 import { loadEntriesFromSqlite } from './loadEntries';
 import { loadTagsFromSqlite } from './tagsRepository';
-import { waitForSqliteEntryWrites, waitForSqlitePreferencesWrites } from '../app/store';
+import { waitForSqliteEntryWrites, waitForSqlitePreferencesWrites, waitForSqliteCalendarWrites } from '../app/store';
 import { loadPreferencesFromSqlite } from './loadPreferences';
 import { store } from '../app/store';
 import type { Entry } from '../types/entry';
 import type { Tag } from '../types/tag';
 
 export const BACKUP_KEYS = ['maybeLater.entries.v1', 'maybeLater.tags.v1', 'maybeLater.calendarColors.v1', 'maybeLater.preferences.v1'] as const;
-type Payload = { entries: Entry[]; tags: Tag[]; preferences: Record<string, unknown> | null; data: Record<string, string | null> };
+type Payload = { entries: Entry[]; tags: Tag[]; preferences: Record<string, unknown> | null; calendarColors: Record<string, string> | null; data: Record<string, string | null> };
 const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 function unique(values: string[]): boolean { return new Set(values).size === values.length; }
 function parseArray(value: unknown, label: string): unknown[] {
@@ -32,14 +33,31 @@ function parseTags(value: unknown): Tag[] {
   if (!unique(tags.map(t => (t as Tag).id)) || !unique(tags.map(t => (t as Tag).name))) throw new Error('Повторяющиеся теги');
   return tags as Tag[];
 }
+function parseCalendarColors(value: unknown): Record<string, string> {
+  if (!object(value) || !Object.entries(value).every(([date, color]) =>
+    /^\d{4}-\d{2}-\d{2}$/.test(date) && typeof color === 'string' && color.length > 0)) {
+    throw new Error('Некорректные цвета календаря в резервной копии');
+  }
+  return value as Record<string, string>;
+}
+
+async function readCalendarColorsFromSqlite(): Promise<Record<string, string>> {
+  const db = await Database.load('sqlite:maybe-later.db');
+  try {
+    const rows = await db.select<{ date: string; color: string }[]>('SELECT date, color FROM calendar_colors ORDER BY date');
+    return Object.fromEntries(rows.map(({ date, color }) => [date, color]));
+  } finally { await db.close(); }
+}
+
 export async function makeBackup(): Promise<string> {
-  if (isTauri()) { await waitForSqliteEntryWrites(); await waitForSqlitePreferencesWrites(); }
+  if (isTauri()) { await waitForSqliteEntryWrites(); await waitForSqlitePreferencesWrites(); await waitForSqliteCalendarWrites(); }
   const entries = isTauri() ? await loadEntriesFromSqlite() : parseEntries(JSON.parse(localStorage.getItem(BACKUP_KEYS[0]) || '[]'));
   const tags = isTauri() ? await loadTagsFromSqlite() : parseTags(JSON.parse(localStorage.getItem(BACKUP_KEYS[1]) || '[]'));
   const data = Object.fromEntries(BACKUP_KEYS.map(key => [key, localStorage.getItem(key)]));
   // Keep the original v1 structure for compatibility with old backups.
   data[BACKUP_KEYS[0]] = JSON.stringify(entries);
   data[BACKUP_KEYS[1]] = JSON.stringify(tags);
+  if (isTauri()) data[BACKUP_KEYS[2]] = JSON.stringify(await readCalendarColorsFromSqlite());
   if (isTauri()) data[BACKUP_KEYS[3]] = JSON.stringify(await loadPreferencesFromSqlite(store.getState().preferences));
   return JSON.stringify({ app: 'Maybe Later Journal', version: 2, exportedAt: new Date().toISOString(), data }, null, 2);
 }
@@ -55,9 +73,8 @@ export function validateBackup(raw: string): Payload {
   if (!data[BACKUP_KEYS[0]] || !data[BACKUP_KEYS[1]]) throw new Error('В файле отсутствуют записи или теги');
   const entries = parseEntries(JSON.parse(data[BACKUP_KEYS[0]]!));
   const tags = parseTags(JSON.parse(data[BACKUP_KEYS[1]]!));
-  for (const key of [BACKUP_KEYS[2]]) {
-    if (data[key] !== null && !object(JSON.parse(data[key]!))) throw new Error(`Некорректные настройки: ${key}`);
-  }
+  // Missing colors in a legacy backup means "leave current SQLite colors unchanged".
+  const calendarColors = data[BACKUP_KEYS[2]] === null ? null : parseCalendarColors(JSON.parse(data[BACKUP_KEYS[2]]!));
   let preferences: Record<string, unknown> | null = null;
   if (data[BACKUP_KEYS[3]] !== null) {
     const parsed: unknown = JSON.parse(data[BACKUP_KEYS[3]]!);
@@ -68,21 +85,19 @@ export function validateBackup(raw: string): Payload {
     }
     preferences = { ...reference, ...parsed };
   }
-  return { entries, tags, preferences, data };
+  return { entries, tags, preferences, calendarColors, data };
 }
 export async function restoreBackup(payload: Payload): Promise<string> {
   if (isTauri()) {
     await waitForSqliteEntryWrites();
     await waitForSqlitePreferencesWrites();
-    const snapshotPath = await invoke<string>('restore_sqlite_backup', { payload: { entries: payload.entries, tags: payload.tags, preferences: payload.preferences } });
+    await waitForSqliteCalendarWrites();
+    const snapshotPath = await invoke<string>('restore_sqlite_backup', { payload: { entries: payload.entries, tags: payload.tags, preferences: payload.preferences, calendarColors: payload.calendarColors } });
     sessionStorage.setItem('maybeLater.restoreNotice', `Восстановление выполнено. Защитная копия прежней SQLite: ${snapshotPath}`);
     // Preferences are restored inside the same Rust SQLite transaction.
     // A legacy backup without preferences leaves the current SQLite settings intact.
-    // Calendar colors remain in localStorage.
-    for (const key of [BACKUP_KEYS[2]]) {
-      const value = payload.data[key];
-      if (value !== null) localStorage.setItem(key, value);
-    }
+    // Calendar colors are restored atomically in SQLite. Do not write stale
+    // localStorage colors: the SQLite-writer handover marker is authoritative.
   } else {
     for (const key of BACKUP_KEYS) {
       const value = payload.data[key];
