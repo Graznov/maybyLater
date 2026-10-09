@@ -14,8 +14,8 @@ import tagsReducer from '../features/tags/tagsSlice';
 import calendarReducer from '../features/calendar/calendarSlice';
 import preferencesReducer from '../features/preferences/preferencesSlice';
 
-// Temporary SQLite verification mode: Redux actions that modify diary entries are blocked.
-// The UI remains navigable, but editing must not silently write only to localStorage.
+// In Tauri, route entry mutations through SQLite instead of the localStorage reducers.
+// The guard also blocks unsafe mutations if the SQLite write path is unavailable.
 let sqliteReadOnly = false;
 let creatingEntry = false;
 let updateQueue: Promise<void> = Promise.resolve();
