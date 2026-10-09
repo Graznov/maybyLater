@@ -30,3 +30,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# TypeScript build cache and generated Vite config
+*.tsbuildinfo
+/vite.config.js
+/vite.config.d.ts
