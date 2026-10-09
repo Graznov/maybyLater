@@ -4,12 +4,11 @@ import { loadTagsFromSqlite } from './tagsRepository';
 import { waitForSqliteEntryWrites, waitForSqlitePreferencesWrites } from '../app/store';
 import { loadPreferencesFromSqlite } from './loadPreferences';
 import { store } from '../app/store';
-import { savePreferencesToSqlite } from './savePreferences';
 import type { Entry } from '../types/entry';
 import type { Tag } from '../types/tag';
 
 export const BACKUP_KEYS = ['maybeLater.entries.v1', 'maybeLater.tags.v1', 'maybeLater.calendarColors.v1', 'maybeLater.preferences.v1'] as const;
-type Payload = { entries: Entry[]; tags: Tag[]; data: Record<string, string | null> };
+type Payload = { entries: Entry[]; tags: Tag[]; preferences: Record<string, unknown> | null; data: Record<string, string | null> };
 const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 function unique(values: string[]): boolean { return new Set(values).size === values.length; }
 function parseArray(value: unknown, label: string): unknown[] {
@@ -59,20 +58,26 @@ export function validateBackup(raw: string): Payload {
   for (const key of [BACKUP_KEYS[2]]) {
     if (data[key] !== null && !object(JSON.parse(data[key]!))) throw new Error(`Некорректные настройки: ${key}`);
   }
-  return { entries, tags, data };
+  let preferences: Record<string, unknown> | null = null;
+  if (data[BACKUP_KEYS[3]] !== null) {
+    const parsed: unknown = JSON.parse(data[BACKUP_KEYS[3]]!);
+    if (!object(parsed)) throw new Error('Некорректные настройки в резервной копии');
+    const reference = store.getState().preferences as unknown as Record<string, unknown>;
+    for (const [key, value] of Object.entries(parsed)) {
+      if (!(key in reference) || typeof value !== typeof reference[key]) throw new Error(`Некорректное поле настроек: ${key}`);
+    }
+    preferences = { ...reference, ...parsed };
+  }
+  return { entries, tags, preferences, data };
 }
 export async function restoreBackup(payload: Payload): Promise<string> {
   if (isTauri()) {
     await waitForSqliteEntryWrites();
     await waitForSqlitePreferencesWrites();
-    const snapshotPath = await invoke<string>('restore_sqlite_backup', { payload: { entries: payload.entries, tags: payload.tags } });
+    const snapshotPath = await invoke<string>('restore_sqlite_backup', { payload: { entries: payload.entries, tags: payload.tags, preferences: payload.preferences } });
     sessionStorage.setItem('maybeLater.restoreNotice', `Восстановление выполнено. Защитная копия прежней SQLite: ${snapshotPath}`);
-    // Restore preferences to SQLite as well; legacy JSON backups may omit this key.
-    const preferenceJson = payload.data[BACKUP_KEYS[3]];
-    if (preferenceJson !== null) {
-      await savePreferencesToSqlite({ ...store.getState().preferences, ...JSON.parse(preferenceJson) });
-      localStorage.setItem(BACKUP_KEYS[3], preferenceJson);
-    }
+    // Preferences are restored inside the same Rust SQLite transaction.
+    // A legacy backup without preferences leaves the current SQLite settings intact.
     // Calendar colors remain in localStorage.
     for (const key of [BACKUP_KEYS[2]]) {
       const value = payload.data[key];

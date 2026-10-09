@@ -8,7 +8,16 @@ struct BackupEntry { id: String, title: String, content: String, date: String, t
 #[derive(Deserialize, Serialize, Clone)]
 struct BackupTag { id: String, name: String, color: String }
 #[derive(Deserialize, Clone)]
-struct BackupPayload { entries: Vec<BackupEntry>, tags: Vec<BackupTag> }
+struct BackupPayload { entries: Vec<BackupEntry>, tags: Vec<BackupTag>, preferences: Option<serde_json::Value> }
+
+fn verify_preferences(conn: &rusqlite::Connection, payload: &BackupPayload) -> Result<(), String> {
+    if let Some(expected) = &payload.preferences {
+        let raw: String = conn.query_row("SELECT value FROM preferences WHERE key=?1", ["preferences.v1"], |r| r.get(0)).map_err(|e| e.to_string())?;
+        let actual: serde_json::Value = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
+        if &actual != expected { return Err("Настройки после восстановления не совпадают".into()); }
+    }
+    Ok(())
+}
 
 // Shared implementation for real restore and isolated in-memory verification.
 fn apply_backup(conn: &mut rusqlite::Connection, payload: &BackupPayload) -> Result<(), String> {
@@ -24,6 +33,10 @@ fn apply_backup(conn: &mut rusqlite::Connection, payload: &BackupPayload) -> Res
         tx.execute("INSERT INTO entries (id, title, content, date, tags, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             rusqlite::params![entry.id, entry.title, entry.content, entry.date, tags, entry.created_at, entry.updated_at])
             .map_err(|e| e.to_string())?;
+    }
+    if let Some(preferences) = &payload.preferences {
+        let json = serde_json::to_string(preferences).map_err(|e| e.to_string())?;
+        tx.execute("INSERT INTO preferences (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value=excluded.value", rusqlite::params!["preferences.v1", json]).map_err(|e| e.to_string())?;
     }
     tx.commit().map_err(|e| e.to_string())
 }
@@ -68,8 +81,11 @@ fn test_sqlite_safety_snapshot(app: tauri::AppHandle) -> Result<String, String> 
         for (table, columns) in [
             ("entries", "id, title, content, date, tags, created_at, updated_at"),
             ("tags", "id, name, color"),
+            ("preferences", "key, value"),
         ] {
-            let sql = format!("SELECT {columns} FROM {table} ORDER BY id");
+            // preferences is keyed by `key`, unlike entries and tags (keyed by `id`).
+            let order_column = if table == "preferences" { "key" } else { "id" };
+            let sql = format!("SELECT {columns} FROM {table} ORDER BY {order_column}");
             let read = |conn: &rusqlite::Connection| -> Result<Vec<Vec<String>>, String> {
                 let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
                 let cols = stmt.column_count();
@@ -134,6 +150,7 @@ fn test_sqlite_restore_on_copy(app: tauri::AppHandle, payload: BackupPayload) ->
         ).map_err(|e| e.to_string())?;
         if stored != (tag.name.clone(), tag.color.clone()) { return Err(format!("Не совпадает тег {}", tag.id)); }
     }
+    verify_preferences(&copy, &payload)?;
     drop(copy);
     Ok(format!("Тест на дисковой копии пройден: {} записей, {} тегов. Основная база не изменялась.", entry_count, tag_count))
 }
@@ -142,7 +159,7 @@ fn test_sqlite_restore_on_copy(app: tauri::AppHandle, payload: BackupPayload) ->
 #[tauri::command]
 fn verify_sqlite_restore(payload: BackupPayload) -> Result<String, String> {
     let mut conn = rusqlite::Connection::open_in_memory().map_err(|e| e.to_string())?;
-    conn.execute_batch("CREATE TABLE entries (id TEXT PRIMARY KEY NOT NULL, title TEXT NOT NULL, content TEXT NOT NULL, date TEXT NOT NULL, tags TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL); CREATE TABLE tags (id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, color TEXT NOT NULL);")
+    conn.execute_batch("CREATE TABLE entries (id TEXT PRIMARY KEY NOT NULL, title TEXT NOT NULL, content TEXT NOT NULL, date TEXT NOT NULL, tags TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL); CREATE TABLE tags (id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, color TEXT NOT NULL); CREATE TABLE preferences (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);")
         .map_err(|e| e.to_string())?;
     apply_backup(&mut conn, &payload)?;
     let entry_count: i64 = conn.query_row("SELECT COUNT(*) FROM entries", [], |r| r.get(0)).map_err(|e| e.to_string())?;
@@ -163,6 +180,7 @@ fn verify_sqlite_restore(payload: BackupPayload) -> Result<String, String> {
         let stored: (String, String) = conn.query_row("SELECT name, color FROM tags WHERE id=?1", [&tag.id], |r| Ok((r.get(0)?,r.get(1)?))).map_err(|e| e.to_string())?;
         if stored != (tag.name.clone(), tag.color.clone()) { return Err(format!("Несовпадение тега {}", tag.id)); }
     }
+    verify_preferences(&conn, &payload)?;
     // Force a UNIQUE violation midway through a second restore, then verify rollback.
     // This exercises the same apply_backup function used by production restore.
     if let Some(first) = payload.entries.first() {

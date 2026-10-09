@@ -56,7 +56,7 @@ export function SettingsPage() {
     if (!pendingImport || !isTauri()) return;
     setBusy(true); setBackupError(''); setRestoreCheck(''); setDiskCheck(''); setSnapshotCheck('');
     try {
-      const result = await invoke<string>('verify_sqlite_restore', { payload: { entries: pendingImport.entries, tags: pendingImport.tags } });
+      const result = await invoke<string>('verify_sqlite_restore', { payload: { entries: pendingImport.entries, tags: pendingImport.tags, preferences: pendingImport.preferences } });
       setRestoreCheck(`✅ ${result}`);
     } catch (error) { setBackupError(`Проверка восстановления: ${String(error)}`); }
     finally { setBusy(false); }
@@ -66,7 +66,7 @@ export function SettingsPage() {
     if (!pendingImport || !restoreCheck || !isTauri()) return;
     setBusy(true); setBackupError(''); setDiskCheck(''); setSnapshotCheck('');
     try {
-      const result = await invoke<string>('test_sqlite_restore_on_copy', { payload: { entries: pendingImport.entries, tags: pendingImport.tags } });
+      const result = await invoke<string>('test_sqlite_restore_on_copy', { payload: { entries: pendingImport.entries, tags: pendingImport.tags, preferences: pendingImport.preferences } });
       setDiskCheck(`✅ ${result}`);
     } catch (error) { setBackupError(`Тест на копии SQLite: ${String(error)}`); }
     finally { setBusy(false); }
@@ -156,15 +156,15 @@ export function SettingsPage() {
 
       </div>
       <Modal open={!!pendingImport} title={english ? 'Restore backup?' : 'Восстановить резервную копию?'} onClose={() => !busy && (setPendingImport(null), setConfirmRealRestore(false))} footer={<><button className="modal__button" disabled={busy} onClick={() => { setPendingImport(null); setConfirmRealRestore(false); }}>{english ? 'Cancel' : 'Отмена'}</button><button className="modal__button" disabled={busy || !isTauri()} onClick={verifyImport}>{busy ? '...' : (english ? 'Check' : 'Проверить')}</button><button className="modal__button modal__button--danger" disabled={busy || !restoreCheck || !diskCheck || !snapshotCheck || !isTauri()} onClick={() => setConfirmRealRestore(true)}>{english ? 'Restore…' : 'Восстановить…'}</button></>}>
-        <p>{english ? 'First verify in memory, then test on a disk copy and verify a safety snapshot. Real restore REPLACES all current entries and tags. A separate SQLite snapshot is saved before replacement.' : 'Сначала проверьте копию в памяти, затем выполните тест на дисковой копии и проверку защитного снимка. Настоящее восстановление ЗАМЕНИТ все текущие записи и теги. Перед заменой будет сохранена отдельная копия SQLite.'}</p>
+        <p>{english ? 'First verify in memory, then test on a disk copy and verify a safety snapshot. Real restore REPLACES all current entries, tags and preferences (when included). A separate SQLite snapshot is saved before replacement.' : 'Сначала проверьте копию в памяти, затем выполните тест на дисковой копии и проверку защитного снимка. Настоящее восстановление ЗАМЕНИТ все текущие записи, теги и настройки (если они есть в JSON). Перед заменой будет сохранена отдельная копия SQLite.'}</p>
         <p>{pendingImport?.entries.length ?? 0} {english ? 'entries' : 'записей'}, {pendingImport?.tags.length ?? 0} {english ? 'tags' : 'тегов'}.</p>{restoreCheck && <p role="status" style={{overflowWrap:'anywhere'}}>{restoreCheck}</p>}
         {restoreCheck && <button type="button" className="modal__button" disabled={busy || !isTauri()} onClick={testOnDiskCopy}>{english ? 'Test on SQLite copy' : 'Тест на копии SQLite'}</button>}
         {diskCheck && <button type="button" className="modal__button" disabled={busy || !isTauri()} onClick={testSafetySnapshot}>{english ? 'Verify safety snapshot' : 'Проверить защитную копию'}</button>}
         {snapshotCheck && <p role="status" style={{overflowWrap:'anywhere'}}>{snapshotCheck}</p>}
         {diskCheck && <p role="status" style={{overflowWrap:'anywhere'}}>{diskCheck}</p>}{backupError && <p role="alert" style={{color:'#ff9999',overflowWrap:'anywhere'}}>{backupError}</p>}
       </Modal>
-      <Modal open={confirmRealRestore} title={english ? 'Confirm real restore' : 'Подтвердить настоящее восстановление'} onClose={() => !busy && setConfirmRealRestore(false)} footer={<><button className="modal__button" disabled={busy} onClick={() => setConfirmRealRestore(false)}>{english ? 'Cancel' : 'Отмена'}</button><button className="modal__button modal__button--danger" disabled={busy} onClick={doRealRestore}>{busy ? '...' : (english ? 'Replace entries and tags' : 'Заменить записи и теги')}</button></>}>
-        <p>{english ? 'This will replace all entries and tags in your real SQLite database. Existing entries not in the backup will disappear. A safety snapshot of the old database will be created automatically.' : 'Все записи и теги настоящей SQLite будут заменены данными из JSON. Записи, которых нет в копии, исчезнут из дневника. Старая база будет автоматически сохранена отдельным файлом.'}</p>
+      <Modal open={confirmRealRestore} title={english ? 'Confirm real restore' : 'Подтвердить настоящее восстановление'} onClose={() => !busy && setConfirmRealRestore(false)} footer={<><button className="modal__button" disabled={busy} onClick={() => setConfirmRealRestore(false)}>{english ? 'Cancel' : 'Отмена'}</button><button className="modal__button modal__button--danger" disabled={busy} onClick={doRealRestore}>{busy ? '...' : (english ? 'Replace SQLite data' : 'Заменить данные SQLite')}</button></>}>
+        <p>{english ? 'This will replace entries, tags and available preferences in one SQLite transaction. Existing entries not in the backup will disappear. A safety snapshot of the old database will be created automatically.' : 'Записи, теги и настройки (если они есть в JSON) будут заменены в одной транзакции SQLite. Записи, которых нет в копии, исчезнут из дневника. Старая база будет автоматически сохранена отдельным файлом.'}</p>
         <p><strong>{pendingImport?.entries.length ?? 0} {english ? 'entries' : 'записей'}, {pendingImport?.tags.length ?? 0} {english ? 'tags' : 'тегов'}</strong></p>
       </Modal>
       <Modal open={confirmReset} title={english ? 'Delete all data?' : 'Удалить все данные?'} onClose={() => setConfirmReset(false)} footer={<><button className="modal__button" onClick={() => setConfirmReset(false)}>{english ? 'Cancel' : 'Отмена'}</button><button className="modal__button modal__button--danger" onClick={resetAll}>{english ? 'Delete' : 'Удалить'}</button></>}>
