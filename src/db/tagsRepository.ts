@@ -3,6 +3,24 @@ import type { Tag } from '../types/tag';
 
 const URL = 'sqlite:maybe-later.db';
 
+// Track tag mutations so backup/restore never reads a half-finished tag operation.
+const pendingTagWrites = new Set<Promise<void>>();
+function trackTagWrite(write: Promise<void>): Promise<void> {
+  pendingTagWrites.add(write);
+  // Register cleanup on both outcomes without creating an unhandled rejection.
+  void write.then(() => pendingTagWrites.delete(write), () => pendingTagWrites.delete(write));
+  return write;
+}
+
+export async function waitForSqliteTagWrites(): Promise<void> {
+  while (pendingTagWrites.size > 0) {
+    const results = await Promise.allSettled([...pendingTagWrites]);
+    const failure = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+    if (failure) throw failure.reason;
+  }
+}
+
+
 export async function loadTagsFromSqlite(): Promise<Tag[]> {
   const db = await Database.load(URL);
   try {
@@ -16,14 +34,20 @@ export async function loadTagsFromSqlite(): Promise<Tag[]> {
   } finally { await db.close(); }
 }
 
-export async function createTagInSqlite(tag: Tag): Promise<void> {
+export function createTagInSqlite(tag: Tag): Promise<void> {
+  return trackTagWrite(createTagImpl(tag));
+}
+async function createTagImpl(tag: Tag): Promise<void> {
   const db = await Database.load(URL);
   try { await db.execute('INSERT INTO tags (id, name, color) VALUES ($1, $2, $3)', [tag.id, tag.name, tag.color]); }
   finally { await db.close(); }
 }
 
 /** SQLite triggers update entries.tags in the same transaction as this UPDATE. */
-export async function updateTagInSqlite(tag: Tag): Promise<void> {
+export function updateTagInSqlite(tag: Tag): Promise<void> {
+  return trackTagWrite(updateTagImpl(tag));
+}
+async function updateTagImpl(tag: Tag): Promise<void> {
   const db = await Database.load(URL);
   try {
     const result = await db.execute('UPDATE tags SET name = $1, color = $2 WHERE id = $3', [tag.name, tag.color, tag.id]);
@@ -32,7 +56,10 @@ export async function updateTagInSqlite(tag: Tag): Promise<void> {
 }
 
 /** SQLite trigger removes the tag from entries atomically with DELETE. */
-export async function deleteTagInSqlite(id: string): Promise<void> {
+export function deleteTagInSqlite(id: string): Promise<void> {
+  return trackTagWrite(deleteTagImpl(id));
+}
+async function deleteTagImpl(id: string): Promise<void> {
   const db = await Database.load(URL);
   try {
     const result = await db.execute('DELETE FROM tags WHERE id = $1', [id]);

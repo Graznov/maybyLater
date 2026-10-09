@@ -1,7 +1,7 @@
 import { isTauri, invoke } from '@tauri-apps/api/core';
 import Database from '@tauri-apps/plugin-sql';
 import { loadEntriesFromSqlite } from './loadEntries';
-import { loadTagsFromSqlite } from './tagsRepository';
+import { loadTagsFromSqlite, waitForSqliteTagWrites } from './tagsRepository';
 import { waitForSqliteEntryWrites, waitForSqlitePreferencesWrites, waitForSqliteCalendarWrites } from '../app/store';
 import { loadPreferencesFromSqlite } from './loadPreferences';
 import { store } from '../app/store';
@@ -50,7 +50,7 @@ async function readCalendarColorsFromSqlite(): Promise<Record<string, string>> {
 }
 
 export async function makeBackup(): Promise<string> {
-  if (isTauri()) { await waitForSqliteEntryWrites(); await waitForSqlitePreferencesWrites(); await waitForSqliteCalendarWrites(); }
+  if (isTauri()) { await waitForSqliteEntryWrites(); await waitForSqliteTagWrites(); await waitForSqlitePreferencesWrites(); await waitForSqliteCalendarWrites(); }
   const entries = isTauri() ? await loadEntriesFromSqlite() : parseEntries(JSON.parse(localStorage.getItem(BACKUP_KEYS[0]) || '[]'));
   const tags = isTauri() ? await loadTagsFromSqlite() : parseTags(JSON.parse(localStorage.getItem(BACKUP_KEYS[1]) || '[]'));
   const data = Object.fromEntries(BACKUP_KEYS.map(key => [key, localStorage.getItem(key)]));
@@ -90,6 +90,7 @@ export function validateBackup(raw: string): Payload {
 export async function restoreBackup(payload: Payload): Promise<string> {
   if (isTauri()) {
     await waitForSqliteEntryWrites();
+    await waitForSqliteTagWrites();
     await waitForSqlitePreferencesWrites();
     await waitForSqliteCalendarWrites();
     const snapshotPath = await invoke<string>('restore_sqlite_backup', { payload: { entries: payload.entries, tags: payload.tags, preferences: payload.preferences, calendarColors: payload.calendarColors } });
