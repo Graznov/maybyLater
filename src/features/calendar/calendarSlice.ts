@@ -2,7 +2,7 @@ import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
 
 const STORAGE_KEY = 'maybeLater.calendarColors.v1';
 
-type CalendarColors = Record<string, string>;
+export type CalendarColors = Record<string, string>;
 
 type CalendarState = {
   dateColors: CalendarColors;
@@ -33,6 +33,9 @@ const calendarSlice = createSlice({
   name: 'calendar',
   initialState,
   reducers: {
+    hydrateCalendarColors(state, action: PayloadAction<CalendarColors>) {
+      state.dateColors = action.payload;
+    },
     setDateColor(
       state,
       action: PayloadAction<{ date: string; color: string }>,
@@ -47,5 +50,5 @@ const calendarSlice = createSlice({
   },
 });
 
-export const { setDateColor, clearDateColor } = calendarSlice.actions;
+export const { setDateColor, clearDateColor, hydrateCalendarColors } = calendarSlice.actions;
 export default calendarSlice.reducer;
