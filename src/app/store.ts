@@ -21,6 +21,12 @@ let updateFailed = false;
 let destructiveOperationPending = false;
 const latestEntries = new Map<string, Entry>();
 export function sqliteUpdateHasFailed(): boolean { return updateFailed; }
+export async function waitForSqliteEntryWrites(): Promise<void> {
+  if (creatingEntry || destructiveOperationPending) throw new Error('Дождитесь завершения операции с записью');
+  await updateQueue;
+  if (updateFailed) throw new Error('Предыдущая запись в SQLite завершилась ошибкой');
+}
+
 function reportUpdateError(error: unknown) {
   console.error('❌ SQLite update: сохранение не выполнено; редактирование заблокировано', error);
   window.dispatchEvent(new CustomEvent('sqlite-save-error', { detail: String(error) }));

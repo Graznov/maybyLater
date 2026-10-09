@@ -1,13 +1,19 @@
 import { useState } from 'react';
+import { isTauri } from '@tauri-apps/api/core';
+import { changeTagInEntries } from '../db/changeTagInEntries';
+import { waitForSqliteEntryWrites } from '../app/store';
 import { Modal } from '../components/Modal/Modal';
 import { Check, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../app/hooks';
 import {
   removeTagFromEntries,
   renameTagInEntries,
+  hydrateEntries,
+  setTag,
 } from '../features/entries/entriesSlice';
 import { addTag, deleteTag, updateTag } from '../features/tags/tagsSlice';
 import './TagsPage.css';
+import { loadEntriesFromSqlite } from '../db/loadEntries';
 
 type Draft = {
   name: string;
@@ -20,6 +26,7 @@ export function TagsPage() {
   const dispatch = useAppDispatch();
   const tags = useAppSelector((state) => state.tags.items);
   const entries = useAppSelector((state) => state.entries.items);
+  const [tagOperationPending, setTagOperationPending] = useState(false);
   const [newTag, setNewTag] = useState<Draft>({ name: '', color: DEFAULT_COLOR });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>({ name: '', color: DEFAULT_COLOR });
@@ -43,34 +50,59 @@ export function TagsPage() {
     setDraft({ name, color });
   };
 
-  const saveTag = (id: string, oldName: string) => {
+  const saveTag = async (id: string, oldName: string) => {
+    if (tagOperationPending) return;
     const name = draft.name.trim();
-    const duplicate = tags.some(
-      (tag) =>
-        tag.id !== id && tag.name.toLocaleLowerCase() === name.toLocaleLowerCase(),
-    );
-
-    if (!name || duplicate) {
+    const duplicate = tags.some(tag => tag.id !== id && tag.name.toLocaleLowerCase() === name.toLocaleLowerCase());
+    if (!name || duplicate) return;
+    if (!isTauri() || oldName === name) {
+      dispatch(updateTag({ id, name, color: draft.color }));
+      if (oldName !== name) dispatch(renameTagInEntries({ oldName, newName: name }));
+      setEditingId(null);
       return;
     }
-
-    dispatch(updateTag({ id, name, color: draft.color }));
-
-    if (oldName !== name) {
-      dispatch(renameTagInEntries({ oldName, newName: name }));
+    setTagOperationPending(true);
+    try {
+      await waitForSqliteEntryWrites();
+      const count = await changeTagInEntries(entries, oldName, name);
+      const updated = await loadEntriesFromSqlite();
+      dispatch(hydrateEntries(updated));
+      dispatch(updateTag({ id, name, color: draft.color }));
+      dispatch(setTag(null));
+      setEditingId(null);
+      console.log(`✅ SQLite tags: тег переименован, обновлено записей: ${count}`);
+    } catch (error) {
+      console.error('❌ SQLite tags: переименование не выполнено', error);
+      window.dispatchEvent(new CustomEvent('sqlite-save-error', { detail: String(error) }));
+    } finally {
+      setTagOperationPending(false);
     }
-
-    setEditingId(null);
   };
 
-  const removeTag = () => {
-    if (!tagToDelete) {
+  const removeTag = async () => {
+    if (!tagToDelete || tagOperationPending) return;
+    if (!isTauri()) {
+      dispatch(deleteTag(tagToDelete.id));
+      dispatch(removeTagFromEntries(tagToDelete.name));
+      setTagToDelete(null);
       return;
     }
-
-    dispatch(deleteTag(tagToDelete.id));
-    dispatch(removeTagFromEntries(tagToDelete.name));
-    setTagToDelete(null);
+    setTagOperationPending(true);
+    try {
+      await waitForSqliteEntryWrites();
+      const count = await changeTagInEntries(entries, tagToDelete.name, null);
+      const updated = await loadEntriesFromSqlite();
+      dispatch(hydrateEntries(updated));
+      dispatch(deleteTag(tagToDelete.id));
+      dispatch(setTag(null));
+      setTagToDelete(null);
+      console.log(`✅ SQLite tags: тег удалён из записей, обновлено записей: ${count}`);
+    } catch (error) {
+      console.error('❌ SQLite tags: удаление не выполнено', error);
+      window.dispatchEvent(new CustomEvent('sqlite-save-error', { detail: String(error) }));
+    } finally {
+      setTagOperationPending(false);
+    }
   };
 
   return (
