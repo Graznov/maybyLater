@@ -1,3 +1,4 @@
+import { isTauri } from '@tauri-apps/api/core';
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
 import { seedTags } from '../../data/tags';
 import type { Tag } from '../../types/tag';
@@ -15,7 +16,7 @@ function loadTags(): Tag[] {
 
 function persistTags(tags: Tag[]) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(tags));
+    if (!isTauri()) localStorage.setItem(STORAGE_KEY, JSON.stringify(tags));
   } catch {
     // localStorage can be unavailable in private/restricted contexts.
   }
@@ -33,6 +34,7 @@ const tagsSlice = createSlice({
   name: 'tags',
   initialState,
   reducers: {
+    hydrateTags(state, action: PayloadAction<Tag[]>) { state.items = action.payload; },
     addTag: {
       reducer(state, action: PayloadAction<Tag>) {
         state.items.push(action.payload);
@@ -69,5 +71,5 @@ const tagsSlice = createSlice({
   },
 });
 
-export const { addTag, updateTag, deleteTag } = tagsSlice.actions;
+export const { hydrateTags, addTag, updateTag, deleteTag } = tagsSlice.actions;
 export default tagsSlice.reducer;

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { isTauri } from '@tauri-apps/api/core';
-import { changeTagInEntries } from '../db/changeTagInEntries';
+import { createTagInSqlite, updateTagInSqlite, deleteTagInSqlite, loadTagsFromSqlite } from '../db/tagsRepository';
 import { waitForSqliteEntryWrites } from '../app/store';
 import { Modal } from '../components/Modal/Modal';
 import { Check, Pencil, Plus, Trash2, X } from 'lucide-react';
@@ -11,7 +11,7 @@ import {
   hydrateEntries,
   setTag,
 } from '../features/entries/entriesSlice';
-import { addTag, deleteTag, updateTag } from '../features/tags/tagsSlice';
+import { addTag, deleteTag, updateTag, hydrateTags } from '../features/tags/tagsSlice';
 import './TagsPage.css';
 import { loadEntriesFromSqlite } from '../db/loadEntries';
 
@@ -34,15 +34,26 @@ export function TagsPage() {
 
   const normalizedNames = tags.map((tag) => tag.name.toLocaleLowerCase());
 
-  const createTag = () => {
+  const createTag = async () => {
+    if (tagOperationPending) return;
     const name = newTag.name.trim();
-
-    if (!name || normalizedNames.includes(name.toLocaleLowerCase())) {
+    if (!name || normalizedNames.includes(name.toLocaleLowerCase())) return;
+    if (!isTauri()) {
+      dispatch(addTag(name, newTag.color));
+      setNewTag({ name: '', color: DEFAULT_COLOR });
       return;
     }
-
-    dispatch(addTag(name, newTag.color));
-    setNewTag({ name: '', color: DEFAULT_COLOR });
+    setTagOperationPending(true);
+    try {
+      const tag = { id: crypto.randomUUID(), name, color: newTag.color };
+      await createTagInSqlite(tag);
+      dispatch(hydrateTags(await loadTagsFromSqlite()));
+      setNewTag({ name: '', color: DEFAULT_COLOR });
+      console.log('✅ SQLite tags: тег создан:', name);
+    } catch (error) {
+      console.error('❌ SQLite tags: создание не выполнено', error);
+      window.dispatchEvent(new CustomEvent('sqlite-save-error', { detail: String(error) }));
+    } finally { setTagOperationPending(false); }
   };
 
   const startEditing = (id: string, name: string, color: string) => {
@@ -55,7 +66,7 @@ export function TagsPage() {
     const name = draft.name.trim();
     const duplicate = tags.some(tag => tag.id !== id && tag.name.toLocaleLowerCase() === name.toLocaleLowerCase());
     if (!name || duplicate) return;
-    if (!isTauri() || oldName === name) {
+    if (!isTauri()) {
       dispatch(updateTag({ id, name, color: draft.color }));
       if (oldName !== name) dispatch(renameTagInEntries({ oldName, newName: name }));
       setEditingId(null);
@@ -64,13 +75,12 @@ export function TagsPage() {
     setTagOperationPending(true);
     try {
       await waitForSqliteEntryWrites();
-      const count = await changeTagInEntries(entries, oldName, name);
-      const updated = await loadEntriesFromSqlite();
-      dispatch(hydrateEntries(updated));
-      dispatch(updateTag({ id, name, color: draft.color }));
+      await updateTagInSqlite({ id, name, color: draft.color });
+      dispatch(hydrateTags(await loadTagsFromSqlite()));
+      dispatch(hydrateEntries(await loadEntriesFromSqlite()));
       dispatch(setTag(null));
       setEditingId(null);
-      console.log(`✅ SQLite tags: тег переименован, обновлено записей: ${count}`);
+      console.log('✅ SQLite tags: тег обновлён:', name);
     } catch (error) {
       console.error('❌ SQLite tags: переименование не выполнено', error);
       window.dispatchEvent(new CustomEvent('sqlite-save-error', { detail: String(error) }));
@@ -90,13 +100,12 @@ export function TagsPage() {
     setTagOperationPending(true);
     try {
       await waitForSqliteEntryWrites();
-      const count = await changeTagInEntries(entries, tagToDelete.name, null);
-      const updated = await loadEntriesFromSqlite();
-      dispatch(hydrateEntries(updated));
-      dispatch(deleteTag(tagToDelete.id));
+      await deleteTagInSqlite(tagToDelete.id);
+      dispatch(hydrateTags(await loadTagsFromSqlite()));
+      dispatch(hydrateEntries(await loadEntriesFromSqlite()));
       dispatch(setTag(null));
       setTagToDelete(null);
-      console.log(`✅ SQLite tags: тег удалён из записей, обновлено записей: ${count}`);
+      console.log('✅ SQLite tags: тег удалён');
     } catch (error) {
       console.error('❌ SQLite tags: удаление не выполнено', error);
       window.dispatchEvent(new CustomEvent('sqlite-save-error', { detail: String(error) }));
@@ -140,7 +149,7 @@ export function TagsPage() {
             placeholder="Название нового тега"
           />
 
-          <button className="tag-primary" onClick={createTag} disabled={!newTag.name.trim()}>
+          <button className="tag-primary" onClick={createTag} disabled={!newTag.name.trim() || tagOperationPending}>
             <Plus size={18} />
             Добавить
           </button>
@@ -188,6 +197,7 @@ export function TagsPage() {
                       <button
                         title="Сохранить"
                         onClick={() => saveTag(tag.id, tag.name)}
+                        disabled={tagOperationPending}
                       >
                         <Check size={18} />
                       </button>
@@ -246,6 +256,7 @@ export function TagsPage() {
             <button
               className="modal__button modal__button--danger"
               onClick={removeTag}
+              disabled={tagOperationPending}
             >
               Удалить
             </button>
