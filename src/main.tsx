@@ -7,10 +7,14 @@ import App from './App';
 import './index.css';
 import { isTauri } from '@tauri-apps/api/core';
 import { testSqliteConnection } from './db/testConnection';
+import { testDataMigration } from './db/testDataMigration';
 
 // Temporary SQLite diagnostic. Does not change diary data.
 if (isTauri()) {
-  void testSqliteConnection();
+  void (async () => {
+    await testSqliteConnection();
+    await testDataMigration();
+  })();
 }
 
 createRoot(document.getElementById('root')!).render(
