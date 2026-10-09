@@ -1,7 +1,10 @@
 import { isTauri, invoke } from '@tauri-apps/api/core';
 import { loadEntriesFromSqlite } from './loadEntries';
 import { loadTagsFromSqlite } from './tagsRepository';
-import { waitForSqliteEntryWrites } from '../app/store';
+import { waitForSqliteEntryWrites, waitForSqlitePreferencesWrites } from '../app/store';
+import { loadPreferencesFromSqlite } from './loadPreferences';
+import { store } from '../app/store';
+import { savePreferencesToSqlite } from './savePreferences';
 import type { Entry } from '../types/entry';
 import type { Tag } from '../types/tag';
 
@@ -31,13 +34,14 @@ function parseTags(value: unknown): Tag[] {
   return tags as Tag[];
 }
 export async function makeBackup(): Promise<string> {
-  if (isTauri()) await waitForSqliteEntryWrites();
+  if (isTauri()) { await waitForSqliteEntryWrites(); await waitForSqlitePreferencesWrites(); }
   const entries = isTauri() ? await loadEntriesFromSqlite() : parseEntries(JSON.parse(localStorage.getItem(BACKUP_KEYS[0]) || '[]'));
   const tags = isTauri() ? await loadTagsFromSqlite() : parseTags(JSON.parse(localStorage.getItem(BACKUP_KEYS[1]) || '[]'));
   const data = Object.fromEntries(BACKUP_KEYS.map(key => [key, localStorage.getItem(key)]));
   // Keep the original v1 structure for compatibility with old backups.
   data[BACKUP_KEYS[0]] = JSON.stringify(entries);
   data[BACKUP_KEYS[1]] = JSON.stringify(tags);
+  if (isTauri()) data[BACKUP_KEYS[3]] = JSON.stringify(await loadPreferencesFromSqlite(store.getState().preferences));
   return JSON.stringify({ app: 'Maybe Later Journal', version: 2, exportedAt: new Date().toISOString(), data }, null, 2);
 }
 export function validateBackup(raw: string): Payload {
@@ -52,7 +56,7 @@ export function validateBackup(raw: string): Payload {
   if (!data[BACKUP_KEYS[0]] || !data[BACKUP_KEYS[1]]) throw new Error('В файле отсутствуют записи или теги');
   const entries = parseEntries(JSON.parse(data[BACKUP_KEYS[0]]!));
   const tags = parseTags(JSON.parse(data[BACKUP_KEYS[1]]!));
-  for (const key of [BACKUP_KEYS[2], BACKUP_KEYS[3]]) {
+  for (const key of [BACKUP_KEYS[2]]) {
     if (data[key] !== null && !object(JSON.parse(data[key]!))) throw new Error(`Некорректные настройки: ${key}`);
   }
   return { entries, tags, data };
@@ -60,10 +64,17 @@ export function validateBackup(raw: string): Payload {
 export async function restoreBackup(payload: Payload): Promise<string> {
   if (isTauri()) {
     await waitForSqliteEntryWrites();
+    await waitForSqlitePreferencesWrites();
     const snapshotPath = await invoke<string>('restore_sqlite_backup', { payload: { entries: payload.entries, tags: payload.tags } });
     sessionStorage.setItem('maybeLater.restoreNotice', `Восстановление выполнено. Защитная копия прежней SQLite: ${snapshotPath}`);
-    // localStorage settings only after successful database commit.
-    for (const key of [BACKUP_KEYS[2], BACKUP_KEYS[3]]) {
+    // Restore preferences to SQLite as well; legacy JSON backups may omit this key.
+    const preferenceJson = payload.data[BACKUP_KEYS[3]];
+    if (preferenceJson !== null) {
+      await savePreferencesToSqlite({ ...store.getState().preferences, ...JSON.parse(preferenceJson) });
+      localStorage.setItem(BACKUP_KEYS[3], preferenceJson);
+    }
+    // Calendar colors remain in localStorage.
+    for (const key of [BACKUP_KEYS[2]]) {
       const value = payload.data[key];
       if (value !== null) localStorage.setItem(key, value);
     }

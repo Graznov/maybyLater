@@ -49,7 +49,7 @@ async function bootstrap() {
     console.log(`✅ SQLite tags integration: ${tags.length} тегов загружено из SQLite`);
     const preferences = await loadPreferencesFromSqlite(store.getState().preferences);
     store.dispatch(hydratePreferences(preferences));
-    console.info('ℹ️ SQLite preferences: чтение из SQLite включено; изменения по-прежнему сохраняются в localStorage.');
+    console.info('ℹ️ SQLite preferences: чтение и запись настроек выполняются в SQLite.');
     enableSqliteReadOnly();
     console.log(`✅ SQLite integration: ${entries.length} записей загружено в Redux непосредственно из SQLite`);
     console.log('🔒 SQLite integration: создание, редактирование, дублирование и удаление включены; операции с тегами включены; localStorage не изменён.');

@@ -7,6 +7,7 @@ import { duplicateEntryInSqlite } from '../db/duplicateEntry';
 import { deleteEntryInSqlite } from '../db/deleteEntry';
 import { loadEntriesFromSqlite } from '../db/loadEntries';
 import type { Entry } from '../types/entry';
+import { savePreferencesToSqlite } from '../db/savePreferences';
 import entriesReducer from '../features/entries/entriesSlice';
 import tagsReducer from '../features/tags/tagsSlice';
 import calendarReducer from '../features/calendar/calendarSlice';
@@ -124,8 +125,40 @@ const readOnlyGuard: Middleware = () => next => action => {
   return next(action);
 };
 
+// Serialize preference writes: a slow earlier save must never overwrite a newer value.
+let preferencesWriteQueue: Promise<void> = Promise.resolve();
+let preferencesWriteFailed = false;
+export async function waitForSqlitePreferencesWrites(): Promise<void> {
+  await preferencesWriteQueue;
+  if (preferencesWriteFailed) throw new Error('Сохранение настроек SQLite завершилось ошибкой');
+}
+const sqlitePreferencesWriter: Middleware = api => next => action => {
+  if (!isTauri() || typeof action !== 'object' || action === null || !('type' in action) ||
+      (action.type !== 'preferences/setPreference' && action.type !== 'preferences/setJournalName')) return next(action);
+  if (preferencesWriteFailed) {
+    console.error('❌ SQLite preferences: изменение заблокировано после ошибки сохранения');
+    return action;
+  }
+  const result = next(action);
+  const snapshot = { ...(api.getState() as RootState).preferences };
+  preferencesWriteQueue = preferencesWriteQueue.then(async () => {
+    if (preferencesWriteFailed) return;
+    try {
+      await savePreferencesToSqlite(snapshot);
+      console.log('✅ SQLite preferences write: 15 полей сохранено в SQLite');
+    } catch (error) {
+      preferencesWriteFailed = true;
+      console.error('❌ SQLite preferences write: сохранение не выполнено', error);
+      window.dispatchEvent(new CustomEvent('sqlite-save-error', { detail: `Настройки SQLite: ${String(error)}` }));
+      // Avoid leaving unsaved optimistic settings in Redux; refresh from SQLite on restart.
+      window.alert('Не удалось сохранить настройки в SQLite. Дальнейшие изменения заблокированы. Перезапустите приложение после устранения ошибки.');
+    }
+  });
+  return result;
+};
+
 export const store = configureStore({
-  middleware: getDefaultMiddleware => getDefaultMiddleware().concat(readOnlyGuard),
+  middleware: getDefaultMiddleware => getDefaultMiddleware().concat(readOnlyGuard, sqlitePreferencesWriter),
   reducer: {
     entries: entriesReducer,
     tags: tagsReducer,

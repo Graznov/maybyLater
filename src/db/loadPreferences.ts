@@ -14,27 +14,17 @@ function parseSnapshot(raw: string): PreferencesState {
   return parsed as PreferencesState;
 }
 
-/** v10.8.24: localStorage is still the write authority; synchronize it before reading SQLite. */
+/** v10.8.25: SQLite is authoritative; localStorage is only a one-time fallback. */
 export async function loadPreferencesFromSqlite(current: PreferencesState): Promise<PreferencesState> {
   const db = await Database.load('sqlite:maybe-later.db');
   try {
-    const localRaw = localStorage.getItem(PREFERENCES_STORAGE_KEY);
-    if (localRaw !== null) {
-      // Redux has already applied defaults to the localStorage state.
-      const fresh = JSON.stringify(current);
-      await db.execute(
-        'INSERT INTO preferences (key, value) VALUES ($1, $2) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
-        [KEY, fresh],
-      );
-      console.log('✅ SQLite preferences sync: актуальные настройки localStorage записаны в SQLite');
-    } else {
-      const existing = await db.select<Row[]>('SELECT value FROM preferences WHERE key = $1', [KEY]);
-      if (!existing.length) {
-        await db.execute('INSERT INTO preferences (key, value) VALUES ($1, $2)', [KEY, JSON.stringify(current)]);
-        console.log('✅ SQLite preferences sync: сохранены настройки по умолчанию');
-      } else {
-        console.log('ℹ️ SQLite preferences sync: localStorage отсутствует; используется сохранённый снимок SQLite');
-      }
+    // SQLite is now authoritative. Never overwrite it with potentially stale localStorage.
+    const existing = await db.select<Row[]>('SELECT value FROM preferences WHERE key = $1', [KEY]);
+    if (!existing.length) {
+      const raw = localStorage.getItem(PREFERENCES_STORAGE_KEY);
+      const initial = raw === null ? current : JSON.parse(raw) as PreferencesState;
+      await db.execute('INSERT OR IGNORE INTO preferences (key, value) VALUES ($1, $2)', [KEY, JSON.stringify(initial)]);
+      console.log('✅ SQLite preferences: выполнена первичная миграция из localStorage');
     }
     const rows = await db.select<Row[]>('SELECT value FROM preferences WHERE key = $1', [KEY]);
     if (rows.length !== 1) throw new Error('Не удалось прочитать настройки SQLite');

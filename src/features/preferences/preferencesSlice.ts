@@ -1,4 +1,5 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
+import { isTauri } from '@tauri-apps/api/core';
 
 export type ThemePreference = 'system' | 'light' | 'dark';
 export type Language = 'ru' | 'en';
@@ -70,14 +71,14 @@ const preferencesSlice = createSlice({
     setJournalName(state, action: PayloadAction<string>) {
       const value = action.payload.trim();
       if (value) state.journalName = value;
-      persist(state);
+      if (!isTauri()) persist(state);
     },
     setPreference<K extends keyof PreferencesState>(
       state: PreferencesState,
       action: PayloadAction<{ key: K; value: PreferencesState[K] }>,
     ) {
       Object.assign(state, { [action.payload.key]: action.payload.value });
-      persist(state);
+      if (!isTauri()) persist(state);
     },
   },
 });
