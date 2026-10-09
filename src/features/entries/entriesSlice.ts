@@ -1,5 +1,6 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
 import type { Entry } from '../../types/entry';
+import { isTauri } from '@tauri-apps/api/core';
 
 const STORAGE_KEY = 'maybeLater.entries.v1';
 
@@ -16,7 +17,7 @@ function loadEntries(): Entry[] {
 
 function persistEntries(items: Entry[]) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+    if (!isTauri()) localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
   } catch {
     // Ignore storage errors and keep the current session usable.
   }
@@ -54,6 +55,25 @@ const entriesSlice = createSlice({
   name: 'entries',
   initialState,
   reducers: {
+    hydrateEntries(state, action: PayloadAction<Entry[]>) {
+      state.items = action.payload;
+      state.selectedId = state.items.find(entry => entry.date === state.selectedDate)?.id ?? null;
+    },
+    sqliteEntryUpdated(state, action: PayloadAction<Entry>) {
+      const index = state.items.findIndex(item => item.id === action.payload.id);
+      if (index !== -1) state.items[index] = action.payload;
+    },
+    sqliteEntryDeleted(state, action: PayloadAction<string>) {
+      state.items = state.items.filter(entry => entry.id !== action.payload);
+      if (state.selectedId === action.payload) {
+        state.selectedId = state.items.find(entry => entry.date === state.selectedDate)?.id ?? null;
+      }
+    },
+    sqliteEntryCreated(state, action: PayloadAction<Entry>) {
+      state.items.unshift(action.payload);
+      state.selectedId = action.payload.id;
+      state.selectedDate = action.payload.date;
+    },
     selectDate(state, action: PayloadAction<string>) {
       state.selectedDate = action.payload;
       const first = state.items.find((entry) => entry.date === action.payload);
@@ -162,6 +182,10 @@ const entriesSlice = createSlice({
 });
 
 export const {
+  hydrateEntries,
+  sqliteEntryCreated,
+  sqliteEntryDeleted,
+  sqliteEntryUpdated,
   selectDate,
   selectEntry,
   addEntry,

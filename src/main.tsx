@@ -2,27 +2,58 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { Provider } from 'react-redux';
-import { store } from './app/store';
+import { store, enableSqliteReadOnly } from './app/store';
+import { hydrateEntries } from './features/entries/entriesSlice';
+import { isTauri } from '@tauri-apps/api/core';
+import { loadEntriesFromSqlite } from './db/loadEntries';
 import App from './App';
 import './index.css';
-import { isTauri } from '@tauri-apps/api/core';
-import { testSqliteConnection } from './db/testConnection';
-import { testDataMigration } from './db/testDataMigration';
 
-// Temporary SQLite diagnostic. Does not change diary data.
-if (isTauri()) {
-  void (async () => {
-    await testSqliteConnection();
-    await testDataMigration();
-  })();
+const root = createRoot(document.getElementById('root')!);
+
+function renderApp(sqliteMode: boolean) {
+  root.render(
+    <StrictMode>
+      <Provider store={store}>
+        <BrowserRouter>
+          {sqliteMode && (
+            <div style={{position:'fixed',top:38,right:14,zIndex:99999,padding:'8px 14px',
+              background:'#283e58',color:'#fff',border:'1px solid #7190af',
+              borderRadius:10,fontSize:12,pointerEvents:'none'}}>
+              SQLite: создание, редактирование, дублирование и удаление включены; операции с тегами пока ограничены
+            </div>
+          )}
+          <App />
+        </BrowserRouter>
+      </Provider>
+    </StrictMode>,
+  );
 }
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <Provider store={store}>
-      <BrowserRouter>
-        <App />
-      </BrowserRouter>
-    </Provider>
-  </StrictMode>,
-);
+async function bootstrap() {
+  if (!isTauri()) {
+    renderApp(false);
+    return;
+  }
+  try {
+    // Do not run the old migration on startup: it could copy stale localStorage
+    // data into the database after SQLite becomes the source of truth.
+    const entries = await loadEntriesFromSqlite();
+    store.dispatch(hydrateEntries(entries));
+    enableSqliteReadOnly();
+    console.log(`✅ SQLite integration: ${entries.length} записей загружено в Redux непосредственно из SQLite`);
+    console.log('🔒 SQLite integration: создание, редактирование, дублирование и удаление включены; массовые операции с тегами заблокированы; localStorage не изменён.');
+    renderApp(true);
+  } catch (error) {
+    console.error('❌ SQLite integration: ошибка загрузки', error);
+    // Fail closed. Do not silently fall back to a potentially stale localStorage copy.
+    root.render(
+      <div style={{padding:40,color:'#fff',background:'#172435',minHeight:'100vh',fontFamily:'sans-serif'}}>
+        <h2>Не удалось загрузить записи из SQLite</h2>
+        <p>Дневник не открыт, чтобы избежать случайного изменения данных. Проверь консоль DevTools.</p>
+        <p>localStorage и база SQLite не изменены.</p>
+      </div>,
+    );
+  }
+}
+void bootstrap();
