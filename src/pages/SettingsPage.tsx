@@ -6,6 +6,8 @@ import { Modal } from '../components/Modal/Modal';
 import './SettingsPage.css';
 import { makeBackup, validateBackup, restoreBackup, BACKUP_KEYS } from '../db/backup';
 import { isTauri, invoke } from '@tauri-apps/api/core';
+import { beginSqliteReset, cancelSqliteReset, waitForSqliteEntryWrites, waitForSqlitePreferencesWrites, waitForSqliteCalendarWrites } from '../app/store';
+import { waitForSqliteTagWrites } from '../db/tagsRepository';
 
 const APP_KEYS = BACKUP_KEYS;
 
@@ -90,10 +92,31 @@ export function SettingsPage() {
     finally { setBusy(false); }
   };
 
-  const resetAll = () => {
-    if (isTauri()) { setConfirmReset(false); setBackupError('Удаление всех данных SQLite пока не реализовано. Данные не изменены.'); return; }
-    APP_KEYS.forEach((key) => localStorage.removeItem(key));
-    window.location.reload();
+  const resetAll = async () => {
+    if (busy) return;
+    setBusy(true);
+    setBackupError('');
+    try {
+      if (isTauri()) {
+        beginSqliteReset();
+        await waitForSqliteEntryWrites();
+        await waitForSqliteTagWrites();
+        await waitForSqlitePreferencesWrites();
+        await waitForSqliteCalendarWrites();
+        const snapshotPath = await invoke<string>('reset_sqlite_data');
+        // Remove only obsolete browser copies, not migration handover markers.
+        APP_KEYS.forEach(key => localStorage.removeItem(key));
+        sessionStorage.setItem('maybeLater.restoreNotice', `Данные удалены. Защитная копия SQLite: ${snapshotPath}`);
+      } else {
+        APP_KEYS.forEach(key => localStorage.removeItem(key));
+      }
+      window.location.reload();
+    } catch (error) {
+      cancelSqliteReset();
+      setConfirmReset(false);
+      setBackupError(`Удаление не выполнено: ${String(error)}`);
+      setBusy(false);
+    }
   };
 
   return (
@@ -148,7 +171,7 @@ export function SettingsPage() {
         </SettingsSection>
 
         <SettingsSection danger icon={<Trash2 />} title={english ? 'Danger zone' : 'Опасная зона'} description={english ? 'These actions cannot be undone.' : 'Эти действия нельзя отменить.'}>
-          <button className="settings-danger" onClick={() => setConfirmReset(true)}><RotateCcw size={18} />{english ? 'Delete all application data' : 'Удалить все данные приложения'}</button>
+          <button className="settings-danger" disabled={busy} onClick={() => setConfirmReset(true)}><RotateCcw size={18} />{english ? 'Delete all application data' : 'Удалить все данные приложения'}</button>
         </SettingsSection>
       </div>
 
@@ -167,8 +190,8 @@ export function SettingsPage() {
         <p>{english ? 'This will replace entries, tags, preferences and calendar colors (when included) in one SQLite transaction. Existing entries not in the backup will disappear. A safety snapshot of the old database will be created automatically.' : 'Записи, теги и настройки и цвета календаря (если они есть в JSON) будут заменены в одной транзакции SQLite. Записи, которых нет в копии, исчезнут из дневника. Старая база будет автоматически сохранена отдельным файлом.'}</p>
         <p><strong>{pendingImport?.entries.length ?? 0} {english ? 'entries' : 'записей'}, {pendingImport?.tags.length ?? 0} {english ? 'tags' : 'тегов'}</strong></p>
       </Modal>
-      <Modal open={confirmReset} title={english ? 'Delete all data?' : 'Удалить все данные?'} onClose={() => setConfirmReset(false)} footer={<><button className="modal__button" onClick={() => setConfirmReset(false)}>{english ? 'Cancel' : 'Отмена'}</button><button className="modal__button modal__button--danger" onClick={resetAll}>{english ? 'Delete' : 'Удалить'}</button></>}>
-        <p>{english ? 'Entries, tags, calendar colors and settings will be deleted from this browser.' : 'Записи, теги, цвета календаря и настройки будут удалены из этого браузера.'}</p>
+      <Modal open={confirmReset} title={english ? 'Delete all data?' : 'Удалить все данные?'} onClose={() => !busy && setConfirmReset(false)} footer={<><button className="modal__button" disabled={busy} onClick={() => setConfirmReset(false)}>{english ? 'Cancel' : 'Отмена'}</button><button className="modal__button modal__button--danger" disabled={busy} onClick={resetAll}>{busy ? '…' : (english ? 'Delete' : 'Удалить')}</button></>}>
+        <p>{english ? (isTauri() ? 'Entries, tags, calendar colors and settings will be deleted from SQLite. A recovery snapshot will be saved first.' : 'Entries, tags, calendar colors and settings will be deleted from this browser.') : (isTauri() ? 'Записи, теги, цвета календаря и настройки будут удалены из SQLite. Перед удалением будет создана защитная копия.' : 'Записи, теги, цвета календаря и настройки будут удалены из этого браузера.')}</p>
       </Modal>
     </main>
   );

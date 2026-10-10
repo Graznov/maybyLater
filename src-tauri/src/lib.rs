@@ -61,6 +61,109 @@ fn apply_backup(conn: &mut rusqlite::Connection, payload: &BackupPayload) -> Res
     tx.commit().map_err(|e| e.to_string())
 }
 
+// Reset only user-owned tables; migration markers in app_metadata must survive.
+fn clear_user_data(conn: &mut rusqlite::Connection) -> Result<(), String> {
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    for table in ["entries", "tags", "preferences", "calendar_colors"] {
+        tx.execute(&format!("DELETE FROM {table}"), [])
+            .map_err(|e| format!("Не удалось очистить {table}: {e}"))?;
+    }
+    tx.commit().map_err(|e| e.to_string())
+}
+
+// Verify a consistent SQLite snapshot before any destructive change.
+fn verify_reset_snapshot(source: &rusqlite::Connection, snapshot: &std::path::Path) -> Result<(), String> {
+    let copy = rusqlite::Connection::open_with_flags(snapshot, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(|e| format!("Не удалось открыть защитную копию: {e}"))?;
+    let integrity: String = copy.query_row("PRAGMA integrity_check", [], |r| r.get(0))
+        .map_err(|e| e.to_string())?;
+    if integrity != "ok" { return Err(format!("Нарушена целостность защитной копии: {integrity}")); }
+
+    for (table, columns, key) in [
+        ("entries", "id, title, content, date, tags, created_at, updated_at", "id"),
+        ("tags", "id, name, color", "id"),
+        ("preferences", "key, value", "key"),
+        ("calendar_colors", "date, color", "date"),
+        ("app_metadata", "key, value", "key"),
+    ] {
+        let sql = format!("SELECT {columns} FROM {table} ORDER BY {key}");
+        let read = |db: &rusqlite::Connection| -> Result<Vec<Vec<String>>, String> {
+            let mut stmt = db.prepare(&sql).map_err(|e| e.to_string())?;
+            let count = stmt.column_count();
+            let rows = stmt.query_map([], |row| {
+                (0..count).map(|i| row.get::<_, String>(i)).collect::<rusqlite::Result<Vec<_>>>()
+            }).map_err(|e| e.to_string())?;
+            rows.collect::<rusqlite::Result<Vec<_>>>().map_err(|e| e.to_string())
+        };
+        if read(source)? != read(&copy)? {
+            return Err(format!("Таблица {table} в защитной копии не совпадает с оригиналом"));
+        }
+    }
+    Ok(())
+}
+
+// Called only after the frontend has stopped and drained all SQLite writers.
+// Returns the permanent recovery snapshot path on success.
+#[tauri::command]
+fn reset_sqlite_data(app: tauri::AppHandle) -> Result<String, String> {
+    let path = app.path().app_config_dir().map_err(|e| e.to_string())?.join("maybe-later.db");
+    if !path.is_file() { return Err("Файл базы SQLite не найден".into()); }
+    let mut conn = rusqlite::Connection::open_with_flags(
+        &path, rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE,
+    ).map_err(|e| e.to_string())?;
+    conn.busy_timeout(std::time::Duration::from_secs(10)).map_err(|e| e.to_string())?;
+
+    let timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| e.to_string())?.as_nanos();
+    let snapshot = path.with_file_name(format!("maybe-later-before-reset-{timestamp}.db"));
+    conn.execute("VACUUM INTO ?1", [snapshot.to_string_lossy().as_ref()])
+        .map_err(|e| format!("Не удалось создать защитную копию SQLite: {e}"))?;
+    verify_reset_snapshot(&conn, &snapshot)
+        .map_err(|e| format!("Сброс отменён: защитная копия не прошла проверку: {e}. Файл: {}", snapshot.display()))?;
+    clear_user_data(&mut conn)
+        .map_err(|e| format!("Сброс не выполнен: {e}. Защитная копия: {}", snapshot.display()))?;
+    Ok(snapshot.to_string_lossy().into_owned())
+}
+
+// Tests the reset on a disposable SQLite copy, never on the installed database.
+#[tauri::command]
+fn test_sqlite_reset_on_copy(app: tauri::AppHandle) -> Result<String, String> {
+    let path = app.path().app_config_dir().map_err(|e| e.to_string())?.join("maybe-later.db");
+    if !path.is_file() { return Err("Файл базы SQLite не найден".into()); }
+    let source = rusqlite::Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(|e| e.to_string())?;
+    source.busy_timeout(std::time::Duration::from_secs(10)).map_err(|e| e.to_string())?;
+    let timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| e.to_string())?.as_nanos();
+    let copy_path = path.with_file_name(format!("maybe-later-reset-test-{timestamp}.db"));
+    struct TemporaryDb(std::path::PathBuf);
+    impl Drop for TemporaryDb { fn drop(&mut self) { let _ = std::fs::remove_file(&self.0); } }
+    let _cleanup = TemporaryDb(copy_path.clone());
+    source.execute("VACUUM INTO ?1", [copy_path.to_string_lossy().as_ref()])
+        .map_err(|e| format!("Не удалось создать тестовую копию: {e}"))?;
+    verify_reset_snapshot(&source, &copy_path)?;
+    drop(source);
+    let mut copy = rusqlite::Connection::open(&copy_path).map_err(|e| e.to_string())?;
+    let metadata_before: Vec<(String, String)> = {
+        let mut stmt = copy.prepare("SELECT key, value FROM app_metadata ORDER BY key").map_err(|e| e.to_string())?;
+        let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).map_err(|e| e.to_string())?;
+        rows.collect::<rusqlite::Result<_>>().map_err(|e| e.to_string())?
+    };
+    clear_user_data(&mut copy)?;
+    for table in ["entries", "tags", "preferences", "calendar_colors"] {
+        let count: i64 = copy.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0))
+            .map_err(|e| e.to_string())?;
+        if count != 0 { return Err(format!("После тестового сброса таблица {table} не пуста")); }
+    }
+    let metadata_after: Vec<(String, String)> = {
+        let mut stmt = copy.prepare("SELECT key, value FROM app_metadata ORDER BY key").map_err(|e| e.to_string())?;
+        let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).map_err(|e| e.to_string())?;
+        rows.collect::<rusqlite::Result<_>>().map_err(|e| e.to_string())?
+    };
+    if metadata_before != metadata_after { return Err("Служебные метаданные изменились".into()); }
+    Ok("Тест сброса на отдельной копии пройден: четыре таблицы пусты, app_metadata сохранена. Основная база не изменена.".into())
+}
+
 #[tauri::command]
 fn restore_sqlite_backup(app: tauri::AppHandle, payload: BackupPayload) -> Result<String, String> {
     let path = app.path().app_config_dir().map_err(|e| e.to_string())?.join("maybe-later.db");
@@ -302,7 +405,7 @@ pub fn run() {
     ];
 
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![restore_sqlite_backup, verify_sqlite_restore, test_sqlite_restore_on_copy, test_sqlite_safety_snapshot])
+        .invoke_handler(tauri::generate_handler![restore_sqlite_backup, verify_sqlite_restore, test_sqlite_restore_on_copy, test_sqlite_safety_snapshot, reset_sqlite_data, test_sqlite_reset_on_copy])
         .plugin(
             tauri_plugin_sql::Builder::new()
                 .add_migrations("sqlite:maybe-later.db", migrations)
@@ -310,4 +413,49 @@ pub fn run() {
         )
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod reset_tests {
+    use super::*;
+
+    fn test_db() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch("
+            CREATE TABLE entries (id TEXT PRIMARY KEY, title TEXT, content TEXT, date TEXT, tags TEXT, created_at TEXT, updated_at TEXT);
+            CREATE TABLE tags (id TEXT PRIMARY KEY, name TEXT, color TEXT);
+            CREATE TABLE preferences (key TEXT PRIMARY KEY, value TEXT);
+            CREATE TABLE calendar_colors (date TEXT PRIMARY KEY, color TEXT);
+            CREATE TABLE app_metadata (key TEXT PRIMARY KEY, value TEXT);
+            INSERT INTO entries VALUES ('e1','title','body','2026-01-01','[]','now','now');
+            INSERT INTO tags VALUES ('t1','tag','red');
+            INSERT INTO preferences VALUES ('preferences.v1','{}');
+            INSERT INTO calendar_colors VALUES ('2026-01-01','red');
+            INSERT INTO app_metadata VALUES ('calendar_colors.sqliteWriter.v1','1');
+        ").unwrap();
+        conn
+    }
+
+    #[test]
+    fn reset_clears_user_tables_and_preserves_metadata() {
+        let mut conn = test_db();
+        clear_user_data(&mut conn).unwrap();
+        for table in ["entries", "tags", "preferences", "calendar_colors"] {
+            let count: i64 = conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0)).unwrap();
+            assert_eq!(count, 0, "{table}");
+        }
+        let marker: String = conn.query_row("SELECT value FROM app_metadata WHERE key='calendar_colors.sqliteWriter.v1'", [], |r| r.get(0)).unwrap();
+        assert_eq!(marker, "1");
+    }
+
+    #[test]
+    fn reset_rolls_back_if_a_delete_fails() {
+        let mut conn = test_db();
+        conn.execute_batch("CREATE TRIGGER prevent_tag_delete BEFORE DELETE ON tags BEGIN SELECT RAISE(ABORT, 'test failure'); END;").unwrap();
+        assert!(clear_user_data(&mut conn).is_err());
+        for table in ["entries", "tags", "preferences", "calendar_colors"] {
+            let count: i64 = conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0)).unwrap();
+            assert_eq!(count, 1, "{table}");
+        }
+    }
 }

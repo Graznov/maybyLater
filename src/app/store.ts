@@ -17,6 +17,15 @@ import preferencesReducer from '../features/preferences/preferencesSlice';
 // In Tauri, route entry mutations through SQLite instead of the localStorage reducers.
 // The guard also blocks unsafe mutations if the SQLite write path is unavailable.
 let sqliteReadOnly = false;
+// Synchronous gate: no new SQLite writes may start while a reset is in progress.
+let sqliteResetPending = false;
+export function beginSqliteReset(): void {
+  if (sqliteResetPending) throw new Error('Сброс уже выполняется');
+  sqliteResetPending = true;
+}
+export function cancelSqliteReset(): void { sqliteResetPending = false; }
+export function isSqliteResetPending(): boolean { return sqliteResetPending; }
+
 let creatingEntry = false;
 let updateQueue: Promise<void> = Promise.resolve();
 let updateFailed = false;
@@ -40,6 +49,8 @@ const blockedEntryActions = new Set([
   'entries/deleteEntry', 'entries/renameTagInEntries', 'entries/removeTagFromEntries',
 ]);
 const readOnlyGuard: Middleware = () => next => action => {
+  if (sqliteResetPending && typeof action === 'object' && action !== null && 'type' in action &&
+      typeof action.type === 'string' && blockedEntryActions.has(action.type)) return action;
   if (sqliteReadOnly && typeof action === 'object' && action !== null && 'type' in action
       && typeof action.type === 'string' && blockedEntryActions.has(action.type)) {
     if (action.type === 'entries/addEntry' && isTauri()) {
@@ -136,6 +147,7 @@ export async function waitForSqlitePreferencesWrites(): Promise<void> {
 const sqlitePreferencesWriter: Middleware = api => next => action => {
   if (!isTauri() || typeof action !== 'object' || action === null || !('type' in action) ||
       (action.type !== 'preferences/setPreference' && action.type !== 'preferences/setJournalName')) return next(action);
+  if (sqliteResetPending) return action;
   if (preferencesWriteFailed) {
     console.error('❌ SQLite preferences: изменение заблокировано после ошибки сохранения');
     return action;
@@ -168,6 +180,7 @@ export async function waitForSqliteCalendarWrites(): Promise<void> {
 const sqliteCalendarWriter: Middleware = () => next => action => {
   if (!isTauri() || typeof action !== 'object' || action === null || !('type' in action) ||
       (action.type !== 'calendar/setDateColor' && action.type !== 'calendar/clearDateColor')) return next(action);
+  if (sqliteResetPending) return action;
   if (calendarWriteFailed) {
     console.error('❌ SQLite calendar: изменение заблокировано после ошибки сохранения');
     return action;
