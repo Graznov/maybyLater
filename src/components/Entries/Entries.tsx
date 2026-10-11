@@ -3,6 +3,7 @@ import { format } from 'date-fns';
 import { useAppDispatch, useAppSelector } from '../../app/hooks';
 import { addEntry, selectEntry, setQuery } from '../../features/entries/entriesSlice';
 import './Entries.css';
+import { EntryThumbnail } from './EntryThumbnail';
 
 export function Entries({ all = false }: { all?: boolean }) {
   const dispatch = useAppDispatch();
@@ -22,9 +23,14 @@ export function Entries({ all = false }: { all?: boolean }) {
       <div className="entries__list">
         {items.length ? items.map((entry) => (
           <button key={entry.id} onClick={() => dispatch(selectEntry(entry.id))} className={`entry-card ${entry.id === state.selectedId ? 'active' : ''}`}>
-            <div><b>{entry.title || (en ? 'Untitled' : 'Без названия')}</b><time>{format(new Date(entry.updatedAt), 'HH:mm')}</time></div>
-            <p>{entry.content.replace(/<[^>]*>/g, ' ') || (en ? 'Empty entry' : 'Пустая запись')}</p>
-            {entry.tags.length > 0 && <footer>{entry.tags.map((tag) => <span key={tag}>{tag}</span>)}</footer>}
+            <div className="entry-card__layout">
+              <div className="entry-card__body">
+                <div className="entry-card__heading"><b>{entry.title || (en ? 'Untitled' : 'Без названия')}</b><time>{format(new Date(entry.updatedAt), 'HH:mm')}</time></div>
+                <p>{entry.content.replace(/<[^>]*>/g, ' ') || (en ? 'Empty entry' : 'Пустая запись')}</p>
+                {entry.tags.length > 0 && <footer>{entry.tags.map((tag) => <span key={tag}>{tag}</span>)}</footer>}
+              </div>
+              <EntryThumbnail content={entry.content} />
+            </div>
           </button>
         )) : <div className="entries__empty">{en ? <>No entries yet.<br />Create your first one ✨</> : <>Записей пока нет.<br />Создай первую ✨</>}</div>}
       </div>

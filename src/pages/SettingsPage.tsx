@@ -1,4 +1,4 @@
-import { ChangeEvent, useRef, useState } from 'react';
+import { ChangeEvent, useEffect, useRef, useState } from 'react';
 import { Database, Download, Languages, Monitor, Palette, RotateCcw, Settings2, Trash2, Upload } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../app/hooks';
 import { setJournalName, setPreference, type PreferencesState } from '../features/preferences/preferencesSlice';
@@ -6,6 +6,8 @@ import { Modal } from '../components/Modal/Modal';
 import './SettingsPage.css';
 import { makeBackup, validateBackup, restoreBackup, BACKUP_KEYS } from '../db/backup';
 import { isTauri, invoke } from '@tauri-apps/api/core';
+import { getVersion } from '@tauri-apps/api/app';
+import packageInfo from '../../package.json';
 import { beginSqliteReset, cancelSqliteReset, waitForSqliteEntryWrites, waitForSqlitePreferencesWrites, waitForSqliteCalendarWrites } from '../app/store';
 import { waitForSqliteTagWrites } from '../db/tagsRepository';
 
@@ -15,6 +17,10 @@ export function SettingsPage() {
   const dispatch = useAppDispatch();
   const p = useAppSelector((state) => state.preferences);
   const english = p.language === 'en';
+  const [appVersion, setAppVersion] = useState(packageInfo.version);
+  useEffect(() => {
+    if (isTauri()) void getVersion().then(setAppVersion).catch((error) => console.warn('Cannot read app version:', error));
+  }, []);
   const fileRef = useRef<HTMLInputElement>(null);
   const [confirmReset, setConfirmReset] = useState(false);
   const [pendingImport, setPendingImport] = useState<ReturnType<typeof validateBackup> | null>(null);
@@ -175,7 +181,7 @@ export function SettingsPage() {
         </SettingsSection>
       </div>
 
-      <div className="settings-about"><strong>Maybe Later Journal</strong><span>Browser MVP · v0.8</span><small>{english ? 'Your journal is stored locally in this browser.' : 'Ваш дневник хранится локально в этом браузере.'}</small></div>
+      <div className="settings-about"><strong>Maybe Later</strong><span>{english ? 'Version' : 'Версия'} {appVersion}</span><small>{english ? 'Your journal is stored locally on this device.' : 'Ваш дневник хранится локально на этом устройстве.'}</small></div>
 
       </div>
       <Modal open={!!pendingImport} title={english ? 'Restore backup?' : 'Восстановить резервную копию?'} onClose={() => !busy && (setPendingImport(null), setConfirmRealRestore(false))} footer={<><button className="modal__button" disabled={busy} onClick={() => { setPendingImport(null); setConfirmRealRestore(false); }}>{english ? 'Cancel' : 'Отмена'}</button><button className="modal__button" disabled={busy || !isTauri()} onClick={verifyImport}>{busy ? '...' : (english ? 'Check' : 'Проверить')}</button><button className="modal__button modal__button--danger" disabled={busy || !restoreCheck || !diskCheck || !snapshotCheck || !isTauri()} onClick={() => setConfirmRealRestore(true)}>{english ? 'Restore…' : 'Восстановить…'}</button></>}>

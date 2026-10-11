@@ -335,3 +335,5 @@
 /* Reserve top-right space for native-style window controls. */
 .year-calendar-toolbar { padding-right: 166px; }
 .year-calendar-toolbar__actions { flex-wrap: wrap; }
+
+.year-calendar-entries{max-width:760px;margin:24px auto 30px;padding:0 12px}.year-calendar-entries h2{font-size:16px;color:var(--text);margin:0 0 12px}.year-calendar-entries .entry-card{display:block}.year-calendar-entries .entry-card__heading{display:flex}.year-calendar-entries .entry-card__body{display:block}.year-calendar-entries .entry-card__layout{display:flex}

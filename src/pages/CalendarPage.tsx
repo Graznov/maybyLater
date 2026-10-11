@@ -1,3 +1,5 @@
+import { EntryThumbnail } from '../components/Entries/EntryThumbnail';
+import '../components/Entries/Entries.css';
 import {
   ChevronLeft,
   ChevronRight,
@@ -21,7 +23,7 @@ import {
   clearDateColor,
   setDateColor,
 } from '../features/calendar/calendarSlice';
-import { selectDate } from '../features/entries/entriesSlice';
+import { selectDate, selectEntry } from '../features/entries/entriesSlice';
 import './YearCalendar.css';
 
 const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
@@ -141,6 +143,8 @@ export function CalendarPage() {
     dispatch(selectDate(date));
   };
 
+  const selectedEntries = useMemo(() => entries.filter((entry) => entry.date === selectedDate).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)), [entries, selectedDate]);
+
   const handleOpenDay = () => {
     navigate('/');
   };
@@ -239,6 +243,18 @@ export function CalendarPage() {
             />
           ))}
         </div>
+        {selectedEntries.length > 0 && <section className="year-calendar-entries" aria-label="Записи выбранного дня">
+          <h2>Записи за {selectedLabel}</h2>
+          {selectedEntries.map((entry) => <button key={entry.id} type="button" className="entry-card" onClick={() => { dispatch(selectEntry(entry.id)); navigate('/'); }}>
+            <span className="entry-card__layout">
+              <span className="entry-card__body">
+                <span className="entry-card__heading"><b>{entry.title || 'Без названия'}</b><time>{format(new Date(entry.updatedAt), 'HH:mm')}</time></span>
+                <p>{entry.content.replace(/<[^>]*>/g, ' ') || 'Пустая запись'}</p>
+              </span>
+              <EntryThumbnail content={entry.content} />
+            </span>
+          </button>)}
+        </section>}
       </div>
     </main>
   );
