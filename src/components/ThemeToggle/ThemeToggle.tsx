@@ -1,4 +1,4 @@
-import { Moon, Sun } from 'lucide-react';
+import { Moon, Sun, Palette } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../../app/hooks';
 import { setPreference } from '../../features/preferences/preferencesSlice';
 import { useI18n } from '../../i18n/useI18n';
@@ -12,12 +12,14 @@ export function ThemeToggle() {
   const effectiveDark = preference === 'dark' || (preference === 'system' && systemDark);
 
   const toggle = () => {
-    dispatch(setPreference({ key: 'theme', value: effectiveDark ? 'light' : 'dark' }));
+    const current = preference === 'system' ? (effectiveDark ? 'dark' : 'light') : preference;
+    const next = current === 'light' ? 'dark' : current === 'dark' ? 'cream' : 'light';
+    dispatch(setPreference({ key: 'theme', value: next }));
   };
 
   return (
     <button className="theme-toggle" onClick={toggle} title={t('changeTheme')} aria-label={t('changeTheme')}>
-      {effectiveDark ? <Sun size={18} /> : <Moon size={18} />}
+      {preference === 'cream' ? <Palette size={18} /> : effectiveDark ? <Sun size={18} /> : <Moon size={18} />}
     </button>
   );
 }

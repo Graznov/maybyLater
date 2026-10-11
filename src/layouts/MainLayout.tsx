@@ -4,6 +4,7 @@ import { useAppSelector } from '../app/hooks';
 import { TitleBar } from '../components/TitleBar/TitleBar';
 import { Sidebar } from '../components/Sidebar/Sidebar';
 import './MainLayout.css';
+import '../styles/cream-theme.css';
 
 export function MainLayout() {
   const preferences = useAppSelector((state) => state.preferences);
@@ -18,8 +19,8 @@ export function MainLayout() {
       document.documentElement.lang = preferences.language;
       document.documentElement.dataset.editorFont = preferences.editorFontSize;
       document.documentElement.dataset.editorWidth = preferences.editorWidth;
-      document.documentElement.dataset.sidebarBackground = String(preferences.sidebarBackground);
-      document.documentElement.dataset.windowTransparency = String(preferences.windowTransparency);
+      document.documentElement.dataset.sidebarBackground = String(theme !== 'cream' && preferences.sidebarBackground);
+      document.documentElement.dataset.windowTransparency = String(theme !== 'cream' && preferences.windowTransparency);
     };
     apply();
     media.addEventListener('change', apply);

@@ -36,7 +36,7 @@ export function parsePreferencesSnapshot(raw: string): PreferencesState {
   if (typeof parsed.journalName !== 'string') {
     throw new Error('Недопустимое значение настройки SQLite: journalName');
   }
-  oneOf('theme', ['system', 'light', 'dark']);
+  oneOf('theme', ['system', 'light', 'dark', 'cream']);
   oneOf('language', ['ru', 'en']);
   oneOf('firstDayOfWeek', ['monday', 'sunday']);
   oneOf('timeFormat', ['24h', '12h']);

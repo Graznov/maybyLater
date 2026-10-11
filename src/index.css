@@ -22,3 +22,18 @@ html,body,#root{height:100%;min-height:0;width:100%;margin:0;overflow:hidden;ove
   background-color: transparent;
 }
 :root[data-window-transparency="true"] .main-layout { background: var(--bg); }
+
+/* Warm cream & teal theme. Existing light/dark styles remain unchanged. */
+:root[data-theme="cream"] {
+  --bg:#f9f6e7;
+  --panel:#fffbed;
+  --panel-soft:#f8f5e5;
+  --text:#102e40;
+  --muted:#667780;
+  --border:#e8e5d4;
+  --accent:#006e80;
+  --accent-soft:#dcece6;
+  --card:#fffbed;
+  --shadow:0 5px 20px rgba(44,70,61,.06);
+}
+:root[data-theme="cream"] ::selection { background:#b7ded5; }

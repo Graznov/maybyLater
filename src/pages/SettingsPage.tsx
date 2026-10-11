@@ -132,10 +132,10 @@ export function SettingsPage() {
       <div className="settings-grid">
         <SettingsSection icon={<Palette />} title={english ? 'Appearance' : 'Внешний вид'} description={english ? 'Theme and workspace appearance.' : 'Тема и внешний вид рабочего пространства.'}>
           <SettingRow label={english ? 'Theme' : 'Тема'}>
-            <Segmented value={p.theme} onChange={(v) => set('theme', v as PreferencesState['theme'])} options={english ? [['system','System'],['light','Light'],['dark','Dark']] : [['system','Системная'],['light','Светлая'],['dark','Тёмная']]} />
+            <Segmented value={p.theme} onChange={(v) => set('theme', v as PreferencesState['theme'])} options={english ? [['system','System'],['light','Light'],['dark','Dark'],['cream','Alternative']] : [['system','Системная'],['light','Светлая'],['dark','Тёмная'],['cream','Альтернативная']]} />
           </SettingRow>
-          <SettingRow label={english ? 'Sidebar mountain background' : 'Горный фон Sidebar'}><Switch checked={p.sidebarBackground} onChange={(v) => set('sidebarBackground', v)} /></SettingRow>
-          <SettingRow label={english ? 'Translucent window (experimental)' : 'Полупрозрачное окно (экспериментально)'}><Switch checked={p.windowTransparency} onChange={(v) => set('windowTransparency', v)} /></SettingRow>
+          <SettingRow label={english ? 'Sidebar mountain background' : 'Горный фон Sidebar'}><Switch checked={p.theme !== 'cream' && p.sidebarBackground} disabled={p.theme === 'cream'} onChange={(v) => set('sidebarBackground', v)} /></SettingRow>
+          <SettingRow label={english ? 'Translucent window (experimental)' : 'Полупрозрачное окно (экспериментально)'}><Switch checked={p.theme !== 'cream' && p.windowTransparency} disabled={p.theme === 'cream'} onChange={(v) => set('windowTransparency', v)} /></SettingRow>
           <p className="transparency-hint">{english ? 'Restart the desktop app if the effect is not visible. Disable to restore the original appearance.' : 'Если эффект не виден, перезапустите приложение. Выключите переключатель, чтобы вернуть прежний вид.'}</p>
         </SettingsSection>
 
@@ -202,4 +202,4 @@ function SettingsSection({ icon, title, description, children, danger = false }:
 }
 function SettingRow({ label, children }: { label: string; children: React.ReactNode }) { return <div className="setting-row"><span>{label}</span><div>{children}</div></div>; }
 function Segmented({ value, options, onChange }: { value: string; options: readonly (readonly [string,string])[]; onChange: (value: string) => void }) { return <div className="segmented">{options.map(([key,label]) => <button key={key} className={value === key ? 'active' : ''} onClick={() => onChange(key)}>{label}</button>)}</div>; }
-function Switch({ checked, onChange }: { checked: boolean; onChange: (value: boolean) => void }) { return <button type="button" className={`switch ${checked ? 'on' : ''}`} onClick={() => onChange(!checked)} aria-pressed={checked}><i /></button>; }
+function Switch({ checked, onChange, disabled = false }: { checked: boolean; onChange: (value: boolean) => void; disabled?: boolean }) { return <button type="button" className={`switch ${checked ? 'on' : ''}`} onClick={() => onChange(!checked)} aria-pressed={checked} disabled={disabled}><i /></button>; }

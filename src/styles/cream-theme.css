@@ -1,0 +1,38 @@
+/* Cream & teal: three flat work areas with subtle separators, no card frames. */
+:root[data-theme="cream"] .sidebar {
+  color:var(--text); background:#f7f3de; background-image:none;
+  border-right:1px solid var(--border);
+}
+:root[data-theme="cream"] .sidebar::after { display:none; }
+:root[data-theme="cream"] .sidebar__logo,
+:root[data-theme="cream"] .sidebar__tags strong { color:var(--text); }
+:root[data-theme="cream"] .sidebar__logo-edit,
+:root[data-theme="cream"] .sidebar__new-tag { color:var(--muted); }
+:root[data-theme="cream"] .sidebar__item,
+:root[data-theme="cream"] .sidebar__tags button { color:var(--text); }
+:root[data-theme="cream"] .sidebar__item:hover,
+:root[data-theme="cream"] .sidebar__tags button:hover,
+:root[data-theme="cream"] .sidebar__tags button.selected,
+:root[data-theme="cream"] .sidebar__logo:hover,
+:root[data-theme="cream"] .sidebar__new-tag:hover { background:#eae9d8;color:var(--text); }
+:root[data-theme="cream"] .sidebar__item.active { background:#006e80;color:#fff;box-shadow:none; }
+:root[data-theme="cream"] .sidebar__divider { background:var(--border); }
+:root[data-theme="cream"] .sidebar__quote { color:#526a70;text-shadow:none; }
+:root[data-theme="cream"] .sidebar__tags-list { scrollbar-color:#b7c7bf transparent; }
+:root[data-theme="cream"] .journal-middle { background:#f9f6e9;border-right:1px solid var(--border); }
+:root[data-theme="cream"] .entries { background:transparent; }
+:root[data-theme="cream"] .section-heading { border-bottom:0;padding-bottom:12px; }
+:root[data-theme="cream"] .entries__tools { border-bottom:0; }
+:root[data-theme="cream"] .search { background:#f0eedf;border:1px solid transparent; }
+:root[data-theme="cream"] .entry-card { background:transparent;border-color:transparent;box-shadow:none; }
+:root[data-theme="cream"] .entry-card:hover { background:#f1efdf;border-color:transparent; }
+:root[data-theme="cream"] .entry-card.active { background:#dcece6;border-color:transparent; }
+:root[data-theme="cream"] .editor,
+:root[data-theme="cream"] .editor__scroll,
+:root[data-theme="cream"] .editor__header { background:#fffbef; }
+:root[data-theme="cream"] .editor__header { border-bottom:1px solid var(--border); }
+:root[data-theme="cream"] .desktop-titlebar { background:transparent; border:0; }
+:root[data-theme="cream"] .editor__actions button,
+:root[data-theme="cream"] .theme-toggle { background:#fffbef; }
+:root[data-theme="cream"] .editor__richtext blockquote { background:var(--accent-soft); }
+:root[data-theme="cream"][data-sidebar-background="false"] .sidebar { background-color:#f7f3de !important; }

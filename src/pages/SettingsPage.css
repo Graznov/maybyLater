@@ -10,3 +10,6 @@
 @media(max-width:950px){.settings-page{padding-bottom:0}.settings-header{padding-right:140px}}
 
 .transparency-hint{color:var(--muted);font-size:12px;line-height:1.5;margin:0 0 10px;}
+
+/* Disabled in the Alternative theme; original preference values are preserved. */
+.switch:disabled{opacity:.42;cursor:not-allowed}

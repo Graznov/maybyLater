@@ -1,7 +1,7 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
 import { isTauri } from '@tauri-apps/api/core';
 
-export type ThemePreference = 'system' | 'light' | 'dark';
+export type ThemePreference = 'system' | 'light' | 'dark' | 'cream';
 export type Language = 'ru' | 'en';
 export type EditorFontSize = 'small' | 'medium' | 'large';
 export type EditorWidth = 'compact' | 'normal' | 'wide';
