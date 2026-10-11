@@ -36,7 +36,12 @@ export function parsePreferencesSnapshot(raw: string): PreferencesState {
   if (typeof parsed.journalName !== 'string') {
     throw new Error('Недопустимое значение настройки SQLite: journalName');
   }
-  oneOf('theme', ['system', 'light', 'dark', 'cream']);
+  // Forward compatibility: an older build may encounter a theme saved by a newer build.
+  // Fall back in memory only; never rewrite the SQLite snapshot during loading.
+  if (!['system', 'light', 'dark', 'cream'].includes(parsed.theme as string)) {
+    console.warn('Неизвестная тема в SQLite; временно используется системная тема');
+    parsed.theme = 'system';
+  }
   oneOf('language', ['ru', 'en']);
   oneOf('firstDayOfWeek', ['monday', 'sunday']);
   oneOf('timeFormat', ['24h', '12h']);

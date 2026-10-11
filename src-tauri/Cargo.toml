@@ -1,6 +1,6 @@
 [package]
 name = "maybe-later-journal"
-version = "0.10.1"
+version = "0.10.2"
 description = "Maybe Later journal"
 authors = ["you"]
 edition = "2021"
