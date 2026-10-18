@@ -1,3 +1,4 @@
+
 import { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import {
@@ -42,13 +43,30 @@ export function Calendar() {
     [entries],
   );
 
+  const goToToday = () => {
+    const today = new Date();
+    setMonth(today);
+    dispatch(selectDate(format(today, 'yyyy-MM-dd')));
+  };
+
   return (
     <div className="calendar">
       <div className="calendar__head">
         <b>{format(month, 'LLLL yyyy', { locale: ru })}</b>
 
-        <div>
+        <div className="calendar__controls">
           <button
+            className="calendar__today"
+            type="button"
+            onClick={goToToday}
+            aria-label="Перейти к сегодняшней дате"
+            title="Перейти к сегодняшней дате"
+          >
+            Сегодня
+          </button>
+
+          <button
+            className="calendar__nav"
             type="button"
             onClick={() => setMonth(subMonths(month, 1))}
             aria-label="Предыдущий месяц"
@@ -57,6 +75,7 @@ export function Calendar() {
           </button>
 
           <button
+            className="calendar__nav"
             type="button"
             onClick={() => setMonth(addMonths(month, 1))}
             aria-label="Следующий месяц"
