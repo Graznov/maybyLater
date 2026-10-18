@@ -405,6 +405,8 @@ pub fn run() {
     ];
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+    .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![restore_sqlite_backup, verify_sqlite_restore, test_sqlite_restore_on_copy, test_sqlite_safety_snapshot, reset_sqlite_data, test_sqlite_reset_on_copy])
         .plugin(
             tauri_plugin_sql::Builder::new()
