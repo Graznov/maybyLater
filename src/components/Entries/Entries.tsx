@@ -25,7 +25,7 @@ export function Entries({ all = false }: { all?: boolean }) {
           <button key={entry.id} onClick={() => dispatch(selectEntry(entry.id))} className={`entry-card ${entry.id === state.selectedId ? 'active' : ''}`}>
             <div className="entry-card__layout">
               <div className="entry-card__body">
-                <div className="entry-card__heading"><b>{entry.title || (en ? 'Untitled' : 'Без названия')}</b><time>{format(new Date(entry.updatedAt), 'HH:mm')}</time></div>
+                <div className="entry-card__heading"><b>{entry.title || (en ? 'Untitled' : 'Без названия')}</b><time>{format(new Date(`${entry.date}T12:00:00`), 'dd.MM.yyyy')} · {format(new Date(entry.updatedAt), 'HH:mm')}</time></div>
                 <p>{entry.content.replace(/<[^>]*>/g, ' ') || (en ? 'Empty entry' : 'Пустая запись')}</p>
                 {entry.tags.length > 0 && <footer>{entry.tags.map((tag) => <span key={tag}>{tag}</span>)}</footer>}
               </div>
