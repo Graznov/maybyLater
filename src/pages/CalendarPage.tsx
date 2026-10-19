@@ -49,12 +49,14 @@ function MonthCard({
   entryDates,
   dateColors,
   onSelect,
+  onOpen,
 }: {
   month: Date;
   selectedDate: string;
   entryDates: Set<string>;
   dateColors: Record<string, string>;
   onSelect: (date: string) => void;
+  onOpen: (date: string) => void;
 }) {
   const days = eachDayOfInterval({
     start: startOfMonth(month),
@@ -100,6 +102,7 @@ function MonthCard({
                   : undefined
               }
               onClick={() => onSelect(key)}
+              onDoubleClick={() => onOpen(key)}
               title={format(day, 'd MMMM yyyy', { locale: ru })}
             >
               <span>{format(day, 'd')}</span>
@@ -141,6 +144,11 @@ export function CalendarPage() {
 
   const handleSelectDate = (date: string) => {
     dispatch(selectDate(date));
+  };
+
+  const handleOpenDate = (date: string) => {
+    dispatch(selectDate(date));
+    navigate('/');
   };
 
   const selectedEntries = useMemo(() => entries.filter((entry) => entry.date === selectedDate).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)), [entries, selectedDate]);
@@ -240,6 +248,7 @@ export function CalendarPage() {
               entryDates={entryDates}
               dateColors={dateColors}
               onSelect={handleSelectDate}
+              onOpen={handleOpenDate}
             />
           ))}
         </div>
