@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, Copy, Download, Info, MoreHorizontal, Trash2 } from 'lucide-react';
+import { Check, ChevronDown, Copy, Download, Info, MoreHorizontal, Tags, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { EditorContent, useEditor } from '@tiptap/react';
@@ -16,6 +16,7 @@ import { Modal } from '../Modal/Modal';
 import { ThemeToggle } from '../ThemeToggle/ThemeToggle';
 import './Editor.css';
 import './Lightbox.css';
+import './TagDropdown.css';
 
 export function Editor() {
   const dispatch = useAppDispatch();
@@ -26,8 +27,10 @@ export function Editor() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [tagsOpen, setTagsOpen] = useState(false);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const tagsRef = useRef<HTMLDivElement>(null);
 
   const tiptap = useEditor({
     extensions: [
@@ -110,9 +113,10 @@ export function Editor() {
   useEffect(() => {
     const close = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) setMenuOpen(false);
+      if (tagsRef.current && !tagsRef.current.contains(event.target as Node)) setTagsOpen(false);
     };
     const escape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setMenuOpen(false);
+      if (event.key === 'Escape') { setMenuOpen(false); setTagsOpen(false); }
     };
     document.addEventListener('mousedown', close);
     document.addEventListener('keydown', escape);
@@ -221,11 +225,38 @@ export function Editor() {
       <div className="editor__scroll">
         <article className="editor__document">
           <input className="editor__title" value={entry.title} onChange={(event) => dispatch(updateEntry({ id: entry.id, patch: { title: event.target.value } }))} placeholder="Название записи" />
-          <div className="editor__tags">
-            {availableTags.map((tag) => {
-              const isActive = entry.tags.includes(tag.name);
-              return <button key={tag.id} type="button" className={isActive ? 'active' : ''} style={isActive ? { borderColor: tag.color, boxShadow: `inset 0 0 0 1px ${tag.color}` } : undefined} onClick={() => toggleTag(tag.name)}><span className="editor__tag-dot" style={{ background: tag.color }} />{tag.name}</button>;
-            })}
+          <div className="editor__tag-picker" ref={tagsRef}>
+            <button
+              type="button"
+              className="editor__tag-trigger"
+              aria-expanded={tagsOpen}
+              aria-haspopup="true"
+              onClick={() => setTagsOpen((open) => !open)}
+            >
+              <Tags size={16} />
+              <span>Теги{entry.tags.length ? ` (${entry.tags.length})` : ''}</span>
+              <ChevronDown size={15} className={tagsOpen ? 'editor__tag-chevron editor__tag-chevron--open' : 'editor__tag-chevron'} />
+            </button>
+            {tagsOpen && (
+              <div className="editor__tag-dropdown" aria-label="Выбор тегов">
+                {availableTags.length ? availableTags.map((tag) => {
+                  const isActive = entry.tags.includes(tag.name);
+                  return (
+                    <button
+                      key={tag.id}
+                      type="button"
+                      className="editor__tag-option"
+                      aria-pressed={isActive}
+                      onClick={() => toggleTag(tag.name)}
+                    >
+                      <span className="editor__tag-dot" style={{ background: tag.color }} />
+                      <span className="editor__tag-name">{tag.name}</span>
+                      {isActive && <Check size={16} className="editor__tag-check" />}
+                    </button>
+                  );
+                }) : <div className="editor__tag-none">Тегов пока нет</div>}
+              </div>
+            )}
           </div>
           <div onClickCapture={handleImageClick}><EditorContent editor={tiptap} /></div>
         </article>
