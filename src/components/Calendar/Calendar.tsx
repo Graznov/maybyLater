@@ -1,4 +1,3 @@
-
 import { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import {
@@ -42,6 +41,8 @@ export function Calendar() {
     () => new Set(entries.map((entry) => entry.date)),
     [entries],
   );
+
+  const todayKey = format(new Date(), 'yyyy-MM-dd');
 
   const goToToday = () => {
     const today = new Date();
@@ -96,6 +97,7 @@ export function Calendar() {
           const key = format(day, 'yyyy-MM-dd');
           const color = dateColors[key];
           const isSelected = key === selectedDate;
+          const isToday = key === todayKey;
 
           return (
             <button
@@ -103,6 +105,7 @@ export function Calendar() {
               key={key}
               className={[
                 isSelected ? 'selected' : '',
+                isToday ? 'today' : '',
                 !isSameMonth(day, month) ? 'muted' : '',
                 color ? 'has-color' : '',
               ]
@@ -115,6 +118,7 @@ export function Calendar() {
               }
               onClick={() => dispatch(selectDate(key))}
               title={format(day, 'd MMMM yyyy', { locale: ru })}
+              aria-current={isToday ? 'date' : undefined}
             >
               <span>{format(day, 'd')}</span>
               {entryDates.has(key) && <i aria-hidden="true" />}

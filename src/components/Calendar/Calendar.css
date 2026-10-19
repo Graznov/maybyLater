@@ -1,4 +1,3 @@
-
 .calendar {
   padding: 26px 22px 20px;
   border-bottom: 1px solid var(--border);
@@ -129,6 +128,15 @@
 .calendar__grid button.selected:not(.has-color) {
   color: white;
   background: #1b2b3c;
+}
+
+.calendar__grid button.today:not(.selected) {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.calendar__grid button.today.selected {
+  box-shadow: inset 0 0 0 2px var(--accent);
 }
 
 .calendar__grid button.muted {
