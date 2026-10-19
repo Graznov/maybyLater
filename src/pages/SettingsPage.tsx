@@ -7,6 +7,8 @@ import './SettingsPage.css';
 import { makeBackup, validateBackup, restoreBackup, BACKUP_KEYS } from '../db/backup';
 import { isTauri, invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
+import { save } from '@tauri-apps/plugin-dialog';
+import { writeTextFile } from '@tauri-apps/plugin-fs';
 import packageInfo from '../../package.json';
 import { beginSqliteReset, cancelSqliteReset, waitForSqliteEntryWrites, waitForSqlitePreferencesWrites, waitForSqliteCalendarWrites } from '../app/store';
 import { waitForSqliteTagWrites } from '../db/tagsRepository';
@@ -25,6 +27,7 @@ export function SettingsPage() {
   const [confirmReset, setConfirmReset] = useState(false);
   const [pendingImport, setPendingImport] = useState<ReturnType<typeof validateBackup> | null>(null);
   const [backupError, setBackupError] = useState('');
+  const [backupSuccess, setBackupSuccess] = useState('');
   const [busy, setBusy] = useState(false);
   const [restoreCheck, setRestoreCheck] = useState('');
   const [diskCheck, setDiskCheck] = useState('');
@@ -37,26 +40,51 @@ export function SettingsPage() {
   };
 
   const exportData = async () => {
-    setBusy(true); setBackupError('');
+    if (busy) return;
+    setBusy(true);
+    setBackupError('');
+    setBackupSuccess('');
     try {
-      const content = await makeBackup();
-      const blob = new Blob([content], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `maybe-later-backup-${new Date().toISOString().slice(0, 10)}.json`;
-      document.body.appendChild(a);
-      a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 3000);
-    } catch (error) { setBackupError(String(error)); }
-    finally { setBusy(false); }
+      const filename = `maybe-later-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      if (isTauri()) {
+        // A user-selected destination is granted access by the dialog plugin.
+        const path = await save({
+          title: english ? 'Save journal backup' : 'Сохранить резервную копию дневника',
+          defaultPath: filename,
+          filters: [{ name: 'JSON', extensions: ['json'] }],
+        });
+        if (!path) return; // User cancelled; no error and no file is written.
+        const content = await makeBackup();
+        await writeTextFile(path, content);
+        setBackupSuccess(english ? `Backup saved: ${path}` : `Резервная копия сохранена: ${path}`);
+      } else {
+        const content = await makeBackup();
+        const blob = new Blob([content], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        try {
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setBackupSuccess(english ? 'Backup download started.' : 'Скачивание резервной копии началось.');
+        } finally {
+          setTimeout(() => URL.revokeObjectURL(url), 3000);
+        }
+      }
+    } catch (error) {
+      setBackupError(english ? `Backup failed: ${String(error)}` : `Не удалось сохранить резервную копию: ${String(error)}`);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const importData = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
-    try { setBackupError(''); setRestoreCheck(''); setDiskCheck(''); setSnapshotCheck(''); setConfirmRealRestore(false); setPendingImport(validateBackup(await file.text())); }
+    try { setBackupError(''); setBackupSuccess(''); setRestoreCheck(''); setDiskCheck(''); setSnapshotCheck(''); setConfirmRealRestore(false); setPendingImport(validateBackup(await file.text())); }
     catch (error) { setBackupError(String(error)); }
   };
 
@@ -173,6 +201,7 @@ export function SettingsPage() {
             <button className="settings-action" disabled={busy} onClick={() => fileRef.current?.click()}><Upload size={18} />{english ? 'Import JSON' : 'Импорт JSON'}</button>
             <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={importData} />
           </div>
+          {backupSuccess && <p role="status" style={{overflowWrap:'anywhere'}}>{backupSuccess}</p>}
           {backupError && <p role="alert" style={{color:'#ff9999',overflowWrap:'anywhere'}}>{backupError}</p>}
         </SettingsSection>
 

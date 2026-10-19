@@ -1,7 +1,8 @@
+
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Maybe Later",
-  "version": "0.10.3",
+  "version": "0.10.4",
   "identifier": "com.maybelater.journal",
   "build": {
     "beforeDevCommand": "yarn dev",
@@ -33,6 +34,16 @@
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.ico"
-    ]
+    ],
+    "windows": {
+      "nsis": {
+        "languages": ["Russian", "English"],
+        "displayLanguageSelector": false
+      },
+      "wix": {
+        "language": ["ru-RU", "en-US"]
+      }
+    }
   }
 }
+

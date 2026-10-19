@@ -9,6 +9,17 @@ import { quotes } from '../../data/quotes';
 import { Modal } from '../Modal/Modal';
 import './Sidebar.css';
 
+const QUOTE_CHANGE_INTERVAL_MS = 5 * 60 * 1000;
+
+function randomQuote(previousQuote?: string): string {
+  if (quotes.length === 0) return '';
+  if (quotes.length === 1) return quotes[0];
+
+  const alternatives = quotes.filter((item) => item !== previousQuote);
+  const available = alternatives.length > 0 ? alternatives : quotes;
+  return available[Math.floor(Math.random() * available.length)];
+}
+
 export function Sidebar() {
   const dispatch = useAppDispatch();
   const { t } = useI18n();
@@ -17,7 +28,7 @@ export function Sidebar() {
   const journalName = useAppSelector((state) => state.preferences.journalName);
   const [isNameModalOpen, setIsNameModalOpen] = useState(false);
   const [nameDraft, setNameDraft] = useState(journalName);
-  const [quote] = useState(() => quotes[Math.floor(Math.random() * quotes.length)] ?? '');
+  const [quote, setQuote] = useState(() => randomQuote());
 
   const navigation = [
     [t('today'), '/', SquarePen],
@@ -30,6 +41,14 @@ export function Sidebar() {
   useEffect(() => {
     if (isNameModalOpen) setNameDraft(journalName);
   }, [isNameModalOpen, journalName]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setQuote((currentQuote) => randomQuote(currentQuote));
+    }, QUOTE_CHANGE_INTERVAL_MS);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   const handleSaveName = (event: FormEvent) => {
     event.preventDefault();
