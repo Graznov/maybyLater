@@ -1,0 +1,63 @@
+/* Full-screen photo preview. Kept separate from existing editor styles. */
+.editor__richtext img { cursor: zoom-in; }
+
+.image-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 56px 28px 28px;
+  background: rgba(0, 0, 0, 0.88);
+  cursor: zoom-out;
+}
+
+.image-lightbox img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 6px;
+  cursor: default;
+}
+
+.image-lightbox__close {
+  position: absolute;
+  top: 12px;
+  right: 20px;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  color: white;
+  font-size: 0; /* Hide the text glyph; CSS lines form a precisely centered X. */
+  cursor: pointer;
+}
+
+.image-lightbox__close::before,
+.image-lightbox__close::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 19px;
+  height: 2px;
+  border-radius: 2px;
+  background: currentColor;
+  pointer-events: none;
+}
+
+.image-lightbox__close::before {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.image-lightbox__close::after {
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+.image-lightbox__close:hover {
+  background: rgba(255, 255, 255, 0.28);
+}

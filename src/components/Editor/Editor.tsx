@@ -15,6 +15,7 @@ import { EditorToolbar } from './EditorToolbar';
 import { Modal } from '../Modal/Modal';
 import { ThemeToggle } from '../ThemeToggle/ThemeToggle';
 import './Editor.css';
+import './Lightbox.css';
 
 export function Editor() {
   const dispatch = useAppDispatch();
@@ -25,6 +26,7 @@ export function Editor() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const tiptap = useEditor({
@@ -120,6 +122,24 @@ export function Editor() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!lightboxImage) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setLightboxImage(null);
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, [lightboxImage]);
+
+  const handleImageClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    const target = event.target;
+    if (!(target instanceof HTMLImageElement)) return;
+    if (!target.closest('.editor__richtext')) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (target.src) setLightboxImage(target.src);
+  };
+
   if (!entry) {
     return <section className="editor editor--empty"><div><h2>Выберите запись</h2><p>Или создайте новую запись в средней колонке.</p></div></section>;
   }
@@ -207,9 +227,16 @@ export function Editor() {
               return <button key={tag.id} type="button" className={isActive ? 'active' : ''} style={isActive ? { borderColor: tag.color, boxShadow: `inset 0 0 0 1px ${tag.color}` } : undefined} onClick={() => toggleTag(tag.name)}><span className="editor__tag-dot" style={{ background: tag.color }} />{tag.name}</button>;
             })}
           </div>
-          <EditorContent editor={tiptap} />
+          <div onClickCapture={handleImageClick}><EditorContent editor={tiptap} /></div>
         </article>
       </div>
+
+      {lightboxImage && (
+        <div className="image-lightbox" role="dialog" aria-modal="true" aria-label="Просмотр фотографии" onClick={() => setLightboxImage(null)}>
+          <button type="button" className="image-lightbox__close" aria-label="Закрыть фотографию" onClick={() => setLightboxImage(null)}>×</button>
+          <img src={lightboxImage} alt="Увеличенная фотография" onClick={(event) => event.stopPropagation()} />
+        </div>
+      )}
 
       {preferences.showToolbar && <EditorToolbar editor={tiptap} />}
 
