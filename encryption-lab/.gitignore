@@ -1,0 +1,9 @@
+
+# Rust build artifacts
+/target/
+
+# Test databases
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
