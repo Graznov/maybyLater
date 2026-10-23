@@ -1,3 +1,5 @@
+mod entry_repository;
+
 use tauri::Manager;
 use serde::Deserialize;
 use serde::Serialize;
