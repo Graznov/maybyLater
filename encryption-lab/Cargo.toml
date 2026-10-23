@@ -5,3 +5,5 @@ edition = "2024"
 
 [dependencies]
 rusqlite = { version = "0.32", features = ["bundled-sqlcipher", "bundled-sqlcipher-vendored-openssl"], default-features = false }
+sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio", "sqlite"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
