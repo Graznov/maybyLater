@@ -66,11 +66,11 @@ impl SecureSession {
 
     pub fn with_connection<T>(
         self: &Arc<Self>,
-        operation: impl FnOnce(&Connection) -> Result<T, String>,
+        operation: impl FnOnce(&mut Connection) -> Result<T, String>,
     ) -> Result<T, String> {
         let _permit = self.begin_operation()?;
 
-        let connection = self.connection.lock().map_err(|e| e.to_string())?;
+        let mut connection = self.connection.lock().map_err(|e| e.to_string())?;
 
         // Повторная проверка после ожидания SQLite Mutex.
         let state = self.state.lock().map_err(|e| e.to_string())?;
@@ -79,7 +79,9 @@ impl SecureSession {
             return Err("Операция отменена: дневник блокируется".into());
         }
 
-        let conn = connection.as_ref().ok_or("SQLite-соединение отсутствует")?;
+        let conn = connection
+            .as_mut()
+            .ok_or("SQLite-соединение отсутствует")?;
 
         drop(state);
 
@@ -148,3 +150,7 @@ mod waiting_operation_test;
 #[cfg(test)]
 #[path = "secure_session/entry_integration_test.rs"]
 mod entry_integration_test;
+
+#[cfg(test)]
+#[path = "secure_session/transaction_test.rs"]
+mod transaction_test;
