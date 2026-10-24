@@ -1,4 +1,5 @@
 mod entry_repository;
+mod secure_session;
 
 use tauri::Manager;
 use serde::Deserialize;
