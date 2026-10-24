@@ -1,3 +1,4 @@
+
 use rusqlite::Connection;
 use std::sync::{Arc, Condvar, Mutex};
 
@@ -139,3 +140,7 @@ impl Default for SecureSession {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+#[path = "secure_session/waiting_operation_test.rs"]
+mod waiting_operation_test;
