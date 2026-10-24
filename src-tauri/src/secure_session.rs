@@ -144,3 +144,7 @@ mod tests;
 #[cfg(test)]
 #[path = "secure_session/waiting_operation_test.rs"]
 mod waiting_operation_test;
+
+#[cfg(test)]
+#[path = "secure_session/entry_integration_test.rs"]
+mod entry_integration_test;
