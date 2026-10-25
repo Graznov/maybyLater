@@ -158,3 +158,7 @@ mod transaction_test;
 #[cfg(test)]
 #[path = "secure_session/backup_integration_test.rs"]
 mod backup_integration_test;
+
+#[cfg(test)]
+#[path = "secure_session/reset_integration_test.rs"]
+mod reset_integration_test;
