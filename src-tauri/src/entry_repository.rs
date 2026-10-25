@@ -103,6 +103,47 @@ pub fn load_entries(conn: &Connection) -> Result<Vec<Entry>, String> {
     Ok(entries)
 }
 
+/// Обновляет существующую запись через переданное SQLite-соединение.
+///
+/// Не изменяет id и created_at.
+/// Возвращает ошибку, если обновлена не ровно одна запись.
+pub fn update_entry(
+    conn: &Connection,
+    entry: &Entry,
+) -> Result<(), String> {
+    let tags = serde_json::to_string(&entry.tags)
+        .map_err(|e| e.to_string())?;
+
+    let affected = conn
+        .execute(
+            "UPDATE entries
+             SET title = ?1,
+                 content = ?2,
+                 date = ?3,
+                 tags = ?4,
+                 updated_at = ?5
+             WHERE id = ?6",
+            params![
+                entry.title,
+                entry.content,
+                entry.date,
+                tags,
+                entry.updated_at,
+                entry.id
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+
+    if affected != 1 {
+        return Err(format!(
+            "UPDATE affected {affected} rows for {}",
+            entry.id
+        ));
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -238,5 +279,53 @@ mod tests {
         let result = load_entries(&conn);
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn update_entry_changes_fields_but_preserves_created_at() {
+        let conn = test_db();
+        let original = sample_entry();
+
+        insert_entry(&conn, &original).unwrap();
+
+        let mut updated = sample_entry();
+        updated.title = "Обновлённый заголовок".to_string();
+        updated.content = "Обновлённый текст".to_string();
+        updated.date = "2026-01-02".to_string();
+        updated.tags = vec!["новый тег".to_string()];
+        updated.updated_at = "2026-01-02T12:00:00Z".to_string();
+
+        // Даже если передать другое created_at, в базе оно не меняется.
+        updated.created_at = "2099-01-01T00:00:00Z".to_string();
+
+        update_entry(&conn, &updated).unwrap();
+
+        let entries = load_entries(&conn).unwrap();
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].id, original.id);
+        assert_eq!(entries[0].title, updated.title);
+        assert_eq!(entries[0].content, updated.content);
+        assert_eq!(entries[0].date, updated.date);
+        assert_eq!(entries[0].tags, updated.tags);
+        assert_eq!(entries[0].updated_at, updated.updated_at);
+        assert_eq!(entries[0].created_at, original.created_at);
+    }
+
+    #[test]
+    fn update_entry_rejects_missing_entry() {
+        let conn = test_db();
+        let entry = sample_entry();
+
+        let result = update_entry(&conn, &entry);
+
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            "UPDATE affected 0 rows for test-entry-1"
+        );
+
+        let entries = load_entries(&conn).unwrap();
+        assert!(entries.is_empty());
     }
 }
