@@ -99,6 +99,45 @@ fn backup_restore_respects_session_lock() {
         })
         .unwrap();
 
+        
+    // Создаём ошибочную копию: меняем содержимое и дублируем ID.
+    let mut invalid_backup = backup.clone();
+    invalid_backup.entries[0].title = "Изменённая запись".into();
+    invalid_backup.entries.push(invalid_backup.entries[0].clone());
+
+    // Восстановление должно завершиться ошибкой UNIQUE.
+    assert!(session
+        .with_connection(|db| apply_backup(db, &invalid_backup))
+        .is_err());
+
+    // Проверяем, что после отката сохранились исходные данные.
+    session
+        .with_connection(|db| {
+            let title: String = db
+                .query_row(
+                    "SELECT title FROM entries WHERE id = ?1",
+                    ["test-entry-1"],
+                    |row| row.get(0),
+                )
+                .map_err(|e| e.to_string())?;
+
+            let tag_name: String = db
+                .query_row(
+                    "SELECT name FROM tags WHERE id = ?1",
+                    ["test-tag-1"],
+                    |row| row.get(0),
+                )
+                .map_err(|e| e.to_string())?;
+
+            assert_eq!(title, "Тестовая запись");
+            assert_eq!(tag_name, "Тестовый тег");
+
+            Ok(())
+        })
+        .unwrap();
+
+
+
     // Блокируем сессию: соединение закрывается.
     session.lock_and_wait().unwrap();
 
