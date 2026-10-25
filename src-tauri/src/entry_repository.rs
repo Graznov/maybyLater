@@ -1,3 +1,4 @@
+
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 
@@ -46,6 +47,60 @@ pub fn insert_entry(
     }
 
     Ok(())
+}
+
+/// Загружает записи через переданное SQLite-соединение.
+///
+/// Не открывает файл базы данных и сохраняет порядок сортировки frontend.
+pub fn load_entries(conn: &Connection) -> Result<Vec<Entry>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, title, content, date, tags, created_at, updated_at
+             FROM entries
+             ORDER BY date DESC, created_at DESC, id",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, String>(5)?,
+                row.get::<_, String>(6)?,
+            ))
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut entries = Vec::new();
+    let mut ids = std::collections::HashSet::new();
+
+    for row in rows {
+        let (id, title, content, date, raw_tags, created_at, updated_at) =
+            row.map_err(|e| e.to_string())?;
+
+        let tags: Vec<String> = serde_json::from_str(&raw_tags)
+            .map_err(|e| format!("Неверный формат тегов записи {id}: {e}"))?;
+
+        if id.is_empty() || !ids.insert(id.clone()) {
+            return Err(format!("Некорректный или повторяющийся ID: {id}"));
+        }
+
+        entries.push(Entry {
+            id,
+            title,
+            content,
+            date,
+            tags,
+            created_at,
+            updated_at,
+        });
+    }
+
+    Ok(entries)
 }
 
 #[cfg(test)]
@@ -126,5 +181,62 @@ mod tests {
             .unwrap();
 
         assert_eq!(title, "Тестовая запись");
+    }
+
+    #[test]
+    fn loads_entries_in_expected_order() {
+        let conn = test_db();
+
+        let mut older = sample_entry();
+        older.id = "older-entry".to_string();
+        older.title = "Старая запись".to_string();
+        older.date = "2026-01-01".to_string();
+
+        let mut newer = sample_entry();
+        newer.id = "newer-entry".to_string();
+        newer.title = "Новая запись".to_string();
+        newer.date = "2026-01-02".to_string();
+        newer.tags = vec!["важное".to_string(), "личное".to_string()];
+
+        // Вставляем старую запись первой, чтобы проверить SQL-сортировку.
+        insert_entry(&conn, &older).unwrap();
+        insert_entry(&conn, &newer).unwrap();
+
+        let entries = load_entries(&conn).unwrap();
+
+        assert_eq!(entries.len(), 2);
+
+        assert_eq!(entries[0].id, "newer-entry");
+        assert_eq!(entries[0].title, "Новая запись");
+        assert_eq!(entries[0].tags, vec!["важное", "личное"]);
+
+        assert_eq!(entries[1].id, "older-entry");
+        assert_eq!(entries[1].title, "Старая запись");
+        assert_eq!(entries[1].tags, vec!["тест"]);
+    }
+
+    #[test]
+    fn load_entries_rejects_invalid_tags() {
+        let conn = test_db();
+
+        conn.execute(
+            "INSERT INTO entries (
+                id, title, content, date, tags, created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![
+                "invalid-tags",
+                "Тестовая запись",
+                "Искусственный текст",
+                "2026-01-01",
+                "{invalid json}",
+                "2026-01-01T10:00:00Z",
+                "2026-01-01T10:00:00Z",
+            ],
+        )
+        .unwrap();
+
+        let result = load_entries(&conn);
+
+        assert!(result.is_err());
     }
 }
