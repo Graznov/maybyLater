@@ -5,6 +5,20 @@ use tauri::Manager;
 use serde::Deserialize;
 use serde::Serialize;
 
+#[tauri::command]
+fn get_secure_session_status(
+    session: tauri::State<'_, std::sync::Arc<secure_session::SecureSession>>,
+) -> Result<String, String> {
+    let status = session.status()?;
+
+    Ok(match status {
+        secure_session::SessionStatus::Locked => "Locked",
+        secure_session::SessionStatus::Locking => "Locking",
+        secure_session::SessionStatus::Unlocked => "Unlocked",
+    }
+    .to_string())
+}
+
 #[derive(Deserialize, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct BackupEntry { id: String, title: String, content: String, date: String, tags: Vec<String>, created_at: String, updated_at: String }
@@ -411,7 +425,15 @@ pub fn run() {
         .manage(std::sync::Arc::new(secure_session::SecureSession::new()))
         .plugin(tauri_plugin_dialog::init())
     .plugin(tauri_plugin_fs::init())
-        .invoke_handler(tauri::generate_handler![restore_sqlite_backup, verify_sqlite_restore, test_sqlite_restore_on_copy, test_sqlite_safety_snapshot, reset_sqlite_data, test_sqlite_reset_on_copy])
+.invoke_handler(tauri::generate_handler![
+    get_secure_session_status,
+    restore_sqlite_backup,
+    verify_sqlite_restore,
+    test_sqlite_restore_on_copy,
+    test_sqlite_safety_snapshot,
+    reset_sqlite_data,
+    test_sqlite_reset_on_copy,
+])
         .plugin(
             tauri_plugin_sql::Builder::new()
                 .add_migrations("sqlite:maybe-later.db", migrations)
