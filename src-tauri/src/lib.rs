@@ -19,6 +19,15 @@ fn get_secure_session_status(
     .to_string())
 }
 
+#[tauri::command]
+fn load_secure_entries(
+    session: tauri::State<'_, std::sync::Arc<secure_session::SecureSession>>,
+) -> Result<Vec<entry_repository::Entry>, String> {
+    session.with_connection(|conn| {
+        entry_repository::load_entries(conn)
+    })
+}
+
 #[derive(Deserialize, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct BackupEntry { id: String, title: String, content: String, date: String, tags: Vec<String>, created_at: String, updated_at: String }
@@ -427,6 +436,7 @@ pub fn run() {
     .plugin(tauri_plugin_fs::init())
 .invoke_handler(tauri::generate_handler![
     get_secure_session_status,
+    load_secure_entries,
     restore_sqlite_backup,
     verify_sqlite_restore,
     test_sqlite_restore_on_copy,
