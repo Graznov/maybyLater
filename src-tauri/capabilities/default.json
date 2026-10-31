@@ -12,8 +12,6 @@
     "core:window:allow-toggle-maximize",
     "core:window:allow-close",
     "core:window:allow-is-maximized",
-    "sql:default",
-    "sql:allow-execute",
     "dialog:allow-save",
     "fs:allow-write-text-file"
   ]

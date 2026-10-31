@@ -1,5 +1,4 @@
 import { isTauri, invoke } from '@tauri-apps/api/core';
-import Database from '@tauri-apps/plugin-sql';
 import { loadEntriesFromSqlite } from './loadEntries';
 import { loadTagsFromSqlite, waitForSqliteTagWrites } from './tagsRepository';
 import { waitForSqliteEntryWrites, waitForSqlitePreferencesWrites, waitForSqliteCalendarWrites } from '../app/store';
@@ -42,11 +41,8 @@ function parseCalendarColors(value: unknown): Record<string, string> {
 }
 
 async function readCalendarColorsFromSqlite(): Promise<Record<string, string>> {
-  const db = await Database.load('sqlite:maybe-later.db');
-  try {
-    const rows = await db.select<{ date: string; color: string }[]>('SELECT date, color FROM calendar_colors ORDER BY date');
-    return Object.fromEntries(rows.map(({ date, color }) => [date, color]));
-  } finally { await db.close(); }
+  const rows = await invoke<[string, string][]>('load_secure_calendar_colors');
+  return Object.fromEntries(rows);
 }
 
 export async function makeBackup(): Promise<string> {

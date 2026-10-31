@@ -1,5 +1,10 @@
 mod entry_repository;
+mod tag_repository;
+mod preferences_repository;
+mod calendar_color_repository;
 mod secure_session;
+mod sqlcipher_connection;
+mod schema_migrations;
 
 use tauri::Manager;
 use serde::Deserialize;
@@ -20,12 +25,61 @@ fn get_secure_session_status(
 }
 
 #[tauri::command]
+fn delete_secure_entry(
+    session: tauri::State<'_, std::sync::Arc<secure_session::SecureSession>>,
+    id: String,
+) -> Result<(), String> {
+    session.with_connection(|conn| entry_repository::delete_entry(conn, &id))
+}
+
+#[tauri::command]
+fn update_secure_entry(
+    session: tauri::State<'_, std::sync::Arc<secure_session::SecureSession>>,
+    entry: entry_repository::Entry,
+) -> Result<(), String> {
+    session.with_connection(|conn| entry_repository::update_entry(conn, &entry))
+}
+
+#[tauri::command]
+fn create_secure_entry(
+    session: tauri::State<'_, std::sync::Arc<secure_session::SecureSession>>,
+    entry: entry_repository::Entry,
+) -> Result<(), String> {
+    session.with_connection(|conn| entry_repository::insert_entry(conn, &entry))
+}
+
+#[tauri::command]
 fn load_secure_entries(
     session: tauri::State<'_, std::sync::Arc<secure_session::SecureSession>>,
 ) -> Result<Vec<entry_repository::Entry>, String> {
     session.with_connection(|conn| {
         entry_repository::load_entries(conn)
     })
+}
+
+#[tauri::command]
+fn lock_secure_database(
+    session: tauri::State<'_, std::sync::Arc<secure_session::SecureSession>>,
+) -> Result<(), String> {
+    session.lock_and_wait()
+}
+
+#[tauri::command]
+fn unlock_secure_database(
+    app: tauri::AppHandle,
+    session: tauri::State<'_, std::sync::Arc<secure_session::SecureSession>>,
+    password: String,
+) -> Result<(), String> {
+    let path = app.path().app_config_dir()
+        .map_err(|e| e.to_string())?
+        .join("maybe-later.db");
+
+    if !path.is_file() {
+        return Err("Файл базы данных не найден".into());
+    }
+
+    let conn = sqlcipher_connection::open_verified_database(&path, &password)?;
+    session.unlock_with_connection(conn)
 }
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -347,88 +401,10 @@ fn verify_sqlite_restore(payload: BackupPayload) -> Result<String, String> {
     Ok(format!("Проверено {} записей и {} тегов; содержимое совпадает, откат транзакции работает. Основная база не затронута.", entry_count, tag_count))
 }
 
-use tauri_plugin_sql::{Migration, MigrationKind};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let migrations = vec![
-        Migration {
-            version: 1,
-            description: "create app metadata table",
-            sql: "CREATE TABLE IF NOT EXISTS app_metadata (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);",
-            kind: MigrationKind::Up,
-        },
-        Migration {
-            version: 2,
-            description: "create diary entries table",
-            sql: "
-                CREATE TABLE IF NOT EXISTS entries (
-                    id TEXT PRIMARY KEY NOT NULL,
-                    title TEXT NOT NULL,
-                    content TEXT NOT NULL,
-                    date TEXT NOT NULL,
-                    tags TEXT NOT NULL DEFAULT '[]',
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
-                );
-                CREATE INDEX IF NOT EXISTS idx_entries_date ON entries(date);
-            ",
-            kind: MigrationKind::Up,
-        },
-        Migration {
-            version: 3,
-            description: "create tags table",
-            sql: "CREATE TABLE IF NOT EXISTS tags (id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, color TEXT NOT NULL);",
-            kind: MigrationKind::Up,
-        },
-        Migration {
-            version: 4,
-            description: "atomic tag changes via SQLite triggers",
-            sql: r#"
-                CREATE TRIGGER IF NOT EXISTS trg_tag_rename
-                AFTER UPDATE OF name ON tags
-                WHEN OLD.name <> NEW.name
-                BEGIN
-                    UPDATE entries
-                    SET tags = (
-                        SELECT json_group_array(value)
-                        FROM (
-                            SELECT CASE WHEN value = OLD.name THEN NEW.name ELSE value END AS value
-                            FROM json_each(entries.tags)
-                            ORDER BY CAST(key AS INTEGER)
-                        )
-                    ), updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
-                    WHERE EXISTS (SELECT 1 FROM json_each(entries.tags) WHERE value = OLD.name);
-                END;
-                CREATE TRIGGER IF NOT EXISTS trg_tag_delete
-                AFTER DELETE ON tags
-                BEGIN
-                    UPDATE entries
-                    SET tags = (
-                        SELECT json_group_array(value)
-                        FROM (
-                            SELECT value FROM json_each(entries.tags)
-                            WHERE value <> OLD.name ORDER BY CAST(key AS INTEGER)
-                        )
-                    ), updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
-                    WHERE EXISTS (SELECT 1 FROM json_each(entries.tags) WHERE value = OLD.name);
-                END;
-            "#,
-            kind: MigrationKind::Up,
-        },
-        Migration {
-            version: 5,
-            description: "create preferences snapshot table",
-            sql: "CREATE TABLE IF NOT EXISTS preferences (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);",
-            kind: MigrationKind::Up,
-        },
-        Migration {
-            version: 6,
-            description: "create calendar date colors table",
-            sql: "CREATE TABLE IF NOT EXISTS calendar_colors (date TEXT PRIMARY KEY NOT NULL, color TEXT NOT NULL);",
-            kind: MigrationKind::Up,
-        },
-    ];
+    let migrations = schema_migrations::migrations();
 
     tauri::Builder::default()
         .manage(std::sync::Arc::new(secure_session::SecureSession::new()))
@@ -436,7 +412,24 @@ pub fn run() {
     .plugin(tauri_plugin_fs::init())
 .invoke_handler(tauri::generate_handler![
     get_secure_session_status,
+    unlock_secure_database,
+    lock_secure_database,
+    delete_secure_entry,
+    update_secure_entry,
+    change_secure_entry_tags,
+    create_secure_entry,
     load_secure_entries,
+    load_secure_tags,
+    load_secure_preferences,
+    insert_initial_secure_preferences,
+    save_secure_preferences,
+    save_secure_calendar_color,
+    migrate_secure_calendar_colors,
+    needs_secure_calendar_color_import,
+    load_secure_calendar_colors,
+    create_secure_tag,
+    update_secure_tag,
+    delete_secure_tag,
     restore_sqlite_backup,
     verify_sqlite_restore,
     test_sqlite_restore_on_copy,
@@ -496,4 +489,117 @@ mod reset_tests {
             assert_eq!(count, 1, "{table}");
         }
     }
+}
+
+#[tauri::command]
+fn change_secure_entry_tags(
+    session: tauri::State<'_, std::sync::Arc<secure_session::SecureSession>>,
+    replacements: Vec<(String, Vec<String>)>,
+    updated_at: String,
+) -> Result<usize, String> {
+    session.with_connection(|conn| {
+        entry_repository::change_entry_tags(conn, &replacements, &updated_at)
+    })
+}
+
+#[tauri::command]
+fn load_secure_tags(
+    session: tauri::State<'_, std::sync::Arc<secure_session::SecureSession>>,
+) -> Result<Vec<tag_repository::Tag>, String> {
+    session.with_connection(|conn| tag_repository::load_tags(conn))
+}
+
+#[tauri::command]
+fn create_secure_tag(
+    session: tauri::State<'_, std::sync::Arc<secure_session::SecureSession>>,
+    tag: tag_repository::Tag,
+) -> Result<(), String> {
+    session.with_connection(|conn| tag_repository::insert_tag(conn, &tag))
+}
+
+#[tauri::command]
+fn update_secure_tag(
+    session: tauri::State<'_, std::sync::Arc<secure_session::SecureSession>>,
+    tag: tag_repository::Tag,
+) -> Result<(), String> {
+    session.with_connection(|conn| tag_repository::update_tag(conn, &tag))
+}
+
+#[tauri::command]
+fn delete_secure_tag(
+    session: tauri::State<'_, std::sync::Arc<secure_session::SecureSession>>,
+    id: String,
+) -> Result<(), String> {
+    session.with_connection(|conn| tag_repository::delete_tag(conn, &id))
+}
+
+#[tauri::command]
+fn load_secure_preferences(
+    session: tauri::State<'_, std::sync::Arc<secure_session::SecureSession>>,
+) -> Result<Option<String>, String> {
+    session.with_connection(|conn| preferences_repository::load_preferences(conn))
+}
+
+#[tauri::command]
+fn insert_initial_secure_preferences(
+    session: tauri::State<'_, std::sync::Arc<secure_session::SecureSession>>,
+    value: String,
+) -> Result<(), String> {
+    session.with_connection(|conn| {
+        preferences_repository::insert_initial_preferences(conn, &value)
+    })
+}
+
+#[tauri::command]
+fn save_secure_preferences(
+    session: tauri::State<'_, std::sync::Arc<secure_session::SecureSession>>,
+    value: String,
+) -> Result<(), String> {
+    session.with_connection(|conn| {
+        preferences_repository::save_preferences(conn, &value)
+    })
+}
+
+#[tauri::command]
+fn save_secure_calendar_color(
+    session: tauri::State<'_, std::sync::Arc<secure_session::SecureSession>>,
+    date: String,
+    color: Option<String>,
+) -> Result<(), String> {
+    session.with_connection(|conn| {
+        calendar_color_repository::save_calendar_color(conn, &date, color.as_deref())
+    })
+}
+
+#[tauri::command]
+fn migrate_secure_calendar_colors(
+    session: tauri::State<'_, std::sync::Arc<secure_session::SecureSession>>,
+    legacy_colors: Vec<(String, String)>,
+    browser_handed_over: bool,
+) -> Result<Vec<(String, String)>, String> {
+    session.with_connection(|conn| {
+        calendar_color_repository::migrate_calendar_colors(
+            conn,
+            &legacy_colors,
+            browser_handed_over,
+        )
+    })
+}
+
+#[tauri::command]
+fn needs_secure_calendar_color_import(
+    session: tauri::State<'_, std::sync::Arc<secure_session::SecureSession>>,
+) -> Result<bool, String> {
+    session.with_connection(|conn| {
+        calendar_color_repository::needs_legacy_calendar_color_import(conn)
+    })
+}
+
+#[tauri::command]
+fn load_secure_calendar_colors(
+    session: tauri::State<'_, std::sync::Arc<secure_session::SecureSession>>,
+) -> Result<Vec<(String, String)>, String> {
+    session.with_connection(|conn| {
+        calendar_color_repository::load_calendar_colors(conn)
+    })
 }

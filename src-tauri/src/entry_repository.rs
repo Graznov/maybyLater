@@ -144,11 +144,23 @@ pub fn update_entry(
     Ok(())
 }
 
+/// Удаляет ровно одну существующую запись через переданное соединение.
+pub fn delete_entry(conn: &Connection, id: &str) -> Result<(), String> {
+    let affected = conn.execute("DELETE FROM entries WHERE id = ?1", params![id])
+        .map_err(|e| e.to_string())?;
+
+    if affected != 1 {
+        return Err(format!("DELETE affected {affected} rows for {id}"));
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn test_db() -> Connection {
+    pub(super) fn test_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
 
         conn.execute_batch(
@@ -169,7 +181,36 @@ mod tests {
         conn
     }
 
-    fn sample_entry() -> Entry {
+    #[test]
+    fn load_entries_rejects_non_text_title() {
+        let conn = test_db();
+        conn.execute(
+            "INSERT INTO entries (id, title, content, date, tags, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            rusqlite::params!["invalid-title", vec![0xff_u8], "Текст", "2026-01-01", "[]", "2026-01-01T10:00:00Z", "2026-01-01T10:00:00Z"],
+        ).unwrap();
+        assert!(load_entries(&conn).is_err());
+    }
+
+    #[test]
+    fn delete_entry_removes_existing_entry() {
+        let conn = test_db();
+        let entry = sample_entry();
+        insert_entry(&conn, &entry).unwrap();
+
+        delete_entry(&conn, &entry.id).unwrap();
+
+        assert!(load_entries(&conn).unwrap().is_empty());
+    }
+
+    #[test]
+    fn delete_entry_rejects_missing_entry() {
+        let conn = test_db();
+        let error = delete_entry(&conn, "missing-id").unwrap_err();
+
+        assert!(error.contains("DELETE affected 0 rows"));
+    }
+
+    pub(super) fn sample_entry() -> Entry {
         Entry {
             id: "test-entry-1".to_string(),
             title: "Тестовая запись".to_string(),
@@ -327,5 +368,110 @@ mod tests {
 
         let entries = load_entries(&conn).unwrap();
         assert!(entries.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod change_tags_tests {
+    use super::*;
+
+    #[test]
+    fn change_tags_rolls_back_when_an_entry_is_missing() {
+        let mut conn = tests::test_db();
+
+        let original = tests::sample_entry();
+        insert_entry(&conn, &original).unwrap();
+
+        let replacements = vec![
+            (original.id.clone(), vec!["новый тег".to_string()]),
+            ("missing-entry".to_string(), vec!["новый тег".to_string()]),
+        ];
+
+        let result = change_entry_tags(
+            &mut conn,
+            &replacements,
+            "2026-01-02T12:00:00Z",
+        );
+
+        assert!(result.is_err());
+
+        let entries = load_entries(&conn).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].tags, original.tags);
+        assert_eq!(entries[0].updated_at, original.updated_at);
+    }
+}
+
+/// Atomically replace tags for the specified entries.
+pub fn change_entry_tags(
+    conn: &mut Connection,
+    replacements: &[(String, Vec<String>)],
+    updated_at: &str,
+) -> Result<usize, String> {
+    if replacements.is_empty() {
+        return Ok(0);
+    }
+
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    for (id, tags) in replacements {
+        let tags_json = serde_json::to_string(tags).map_err(|e| e.to_string())?;
+
+        let affected = tx
+            .execute(
+                "UPDATE entries SET tags = ?1, updated_at = ?2 WHERE id = ?3",
+                params![tags_json, updated_at, id],
+            )
+            .map_err(|e| e.to_string())?;
+
+        if affected != 1 {
+            return Err(format!(
+                "Изменено {affected} строк для записи {id}. Изменения отменены."
+            ));
+        }
+    }
+
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(replacements.len())
+}
+
+#[cfg(test)]
+mod change_tags_success_tests {
+    use super::*;
+
+    #[test]
+    fn change_tags_updates_multiple_entries_atomically() {
+        let mut conn = tests::test_db();
+
+        let first = tests::sample_entry();
+        let mut second = tests::sample_entry();
+        second.id = "test-entry-2".to_string();
+
+        insert_entry(&conn, &first).unwrap();
+        insert_entry(&conn, &second).unwrap();
+
+        let replacements = vec![
+            (first.id.clone(), vec!["новый тег".to_string()]),
+            (second.id.clone(), vec!["другой тег".to_string()]),
+        ];
+        let now = "2026-01-02T12:00:00Z";
+
+        let changed = change_entry_tags(&mut conn, &replacements, now).unwrap();
+
+        assert_eq!(changed, 2);
+
+        let entries = load_entries(&conn).unwrap();
+        assert_eq!(entries.len(), 2);
+
+        for entry in &entries {
+            let expected = replacements
+                .iter()
+                .find(|(id, _)| id == &entry.id)
+                .unwrap();
+
+            assert_eq!(&entry.tags, &expected.1);
+            assert_eq!(entry.updated_at, now);
+            assert_eq!(entry.created_at, first.created_at);
+        }
     }
 }

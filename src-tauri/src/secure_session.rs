@@ -162,3 +162,6 @@ mod backup_integration_test;
 #[cfg(test)]
 #[path = "secure_session/reset_integration_test.rs"]
 mod reset_integration_test;
+#[cfg(test)]
+#[path = "secure_session/sqlcipher_integration_test.rs"]
+mod sqlcipher_integration_test;
