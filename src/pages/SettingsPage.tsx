@@ -33,6 +33,7 @@ export function SettingsPage() {
   const [diskCheck, setDiskCheck] = useState('');
   const [snapshotCheck, setSnapshotCheck] = useState('');
   const [confirmRealRestore, setConfirmRealRestore] = useState(false);
+  const [securePassword, setSecurePassword] = useState('');
   const [restoreNotice] = useState(() => { const notice = sessionStorage.getItem('maybeLater.restoreNotice'); if (notice) sessionStorage.removeItem('maybeLater.restoreNotice'); return notice; });
 
   const set = <K extends keyof PreferencesState>(key: K, value: PreferencesState[K]) => {
@@ -99,35 +100,35 @@ export function SettingsPage() {
   };
 
   const testOnDiskCopy = async () => {
-    if (!pendingImport || !restoreCheck || !isTauri()) return;
+    if (busy || !securePassword || !pendingImport || !restoreCheck || !isTauri()) return;
     setBusy(true); setBackupError(''); setDiskCheck(''); setSnapshotCheck('');
     try {
-      const result = await invoke<string>('test_sqlite_restore_on_copy', { payload: { entries: pendingImport.entries, tags: pendingImport.tags, preferences: pendingImport.preferences, calendarColors: pendingImport.calendarColors } });
+      const result = await invoke<string>('test_sqlite_restore_on_copy', { payload: { entries: pendingImport.entries, tags: pendingImport.tags, preferences: pendingImport.preferences, calendarColors: pendingImport.calendarColors }, password: securePassword });
       setDiskCheck(`✅ ${result}`);
     } catch (error) { setBackupError(`Тест на копии SQLite: ${String(error)}`); }
     finally { setBusy(false); }
   };
 
   const testSafetySnapshot = async () => {
-    if (!pendingImport || !restoreCheck || !diskCheck || !isTauri()) return;
+    if (busy || !securePassword || !pendingImport || !restoreCheck || !diskCheck || !isTauri()) return;
     setBusy(true); setBackupError(''); setSnapshotCheck('');
     try {
-      const result = await invoke<string>('test_sqlite_safety_snapshot');
+      const result = await invoke<string>('test_sqlite_safety_snapshot', { password: securePassword });
       setSnapshotCheck(`✅ ${result}`);
     } catch (error) { setBackupError(`Проверка защитной копии: ${String(error)}`); }
     finally { setBusy(false); }
   };
 
   const doRealRestore = async () => {
-    if (!pendingImport || !restoreCheck || !diskCheck || !snapshotCheck || !isTauri()) return;
+    if (busy || !securePassword || !pendingImport || !restoreCheck || !diskCheck || !snapshotCheck || !isTauri()) return;
     setBusy(true); setBackupError('');
-    try { await restoreBackup(pendingImport); }
-    catch (error) { setConfirmRealRestore(false); setBackupError(`Восстановление не выполнено: ${String(error)}`); }
+    try { await restoreBackup(pendingImport, securePassword); }
+    catch (error) { setConfirmRealRestore(false); setDiskCheck(""); setSnapshotCheck(""); setSecurePassword(""); setBackupError(`Восстановление не выполнено: ${String(error)}`); }
     finally { setBusy(false); }
   };
 
   const resetAll = async () => {
-    if (busy) return;
+    if (busy || (isTauri() && !securePassword)) return;
     setBusy(true);
     setBackupError('');
     try {
@@ -137,7 +138,7 @@ export function SettingsPage() {
         await waitForSqliteTagWrites();
         await waitForSqlitePreferencesWrites();
         await waitForSqliteCalendarWrites();
-        const snapshotPath = await invoke<string>('reset_sqlite_data');
+        const snapshotPath = await invoke<string>('reset_sqlite_data', { password: securePassword });
         // Remove only obsolete browser copies, not migration handover markers.
         APP_KEYS.forEach(key => localStorage.removeItem(key));
         sessionStorage.setItem('maybeLater.restoreNotice', `Данные удалены. Защитная копия SQLite: ${snapshotPath}`);
@@ -148,6 +149,7 @@ export function SettingsPage() {
     } catch (error) {
       cancelSqliteReset();
       setConfirmReset(false);
+      setSecurePassword("");
       setBackupError(`Удаление не выполнено: ${String(error)}`);
       setBusy(false);
     }
@@ -213,11 +215,12 @@ export function SettingsPage() {
       <div className="settings-about"><strong>Maybe Later</strong><span>{english ? 'Version' : 'Версия'} {appVersion}</span><small>{english ? 'Your journal is stored locally on this device.' : 'Ваш дневник хранится локально на этом устройстве.'}</small></div>
 
       </div>
-      <Modal open={!!pendingImport} title={english ? 'Restore backup?' : 'Восстановить резервную копию?'} onClose={() => !busy && (setPendingImport(null), setConfirmRealRestore(false))} footer={<><button className="modal__button" disabled={busy} onClick={() => { setPendingImport(null); setConfirmRealRestore(false); }}>{english ? 'Cancel' : 'Отмена'}</button><button className="modal__button" disabled={busy || !isTauri()} onClick={verifyImport}>{busy ? '...' : (english ? 'Check' : 'Проверить')}</button><button className="modal__button modal__button--danger" disabled={busy || !restoreCheck || !diskCheck || !snapshotCheck || !isTauri()} onClick={() => setConfirmRealRestore(true)}>{english ? 'Restore…' : 'Восстановить…'}</button></>}>
+      <Modal open={!!pendingImport} title={english ? 'Restore backup?' : 'Восстановить резервную копию?'} onClose={() => !busy && (setPendingImport(null), setConfirmRealRestore(false), setSecurePassword(""))} footer={<><button className="modal__button" disabled={busy} onClick={() => { setPendingImport(null); setConfirmRealRestore(false); setSecurePassword(""); }}>{english ? 'Cancel' : 'Отмена'}</button><button className="modal__button" disabled={busy || !isTauri()} onClick={verifyImport}>{busy ? '...' : (english ? 'Check' : 'Проверить')}</button><button className="modal__button modal__button--danger" disabled={busy || !restoreCheck || !diskCheck || !snapshotCheck || !isTauri()} onClick={() => setConfirmRealRestore(true)}>{english ? 'Restore…' : 'Восстановить…'}</button></>}>
         <p>{english ? 'First verify in memory, then test on a disk copy and verify a safety snapshot. Real restore REPLACES all current entries, tags and preferences and calendar colors (when included). A separate SQLite snapshot is saved before replacement.' : 'Сначала проверьте копию в памяти, затем выполните тест на дисковой копии и проверку защитного снимка. Настоящее восстановление ЗАМЕНИТ все текущие записи, теги и настройки и цвета календаря (если они есть в JSON). Перед заменой будет сохранена отдельная копия SQLite.'}</p>
         <p>{pendingImport?.entries.length ?? 0} {english ? 'entries' : 'записей'}, {pendingImport?.tags.length ?? 0} {english ? 'tags' : 'тегов'}, {pendingImport?.calendarColors ? Object.keys(pendingImport.calendarColors).length : (english ? 'unchanged' : 'без изменений')} {english ? 'calendar colors' : 'цветов календаря'}.</p>{restoreCheck && <p role="status" style={{overflowWrap:'anywhere'}}>{restoreCheck}</p>}
-        {restoreCheck && <button type="button" className="modal__button" disabled={busy || !isTauri()} onClick={testOnDiskCopy}>{english ? 'Test on SQLite copy' : 'Тест на копии SQLite'}</button>}
-        {diskCheck && <button type="button" className="modal__button" disabled={busy || !isTauri()} onClick={testSafetySnapshot}>{english ? 'Verify safety snapshot' : 'Проверить защитную копию'}</button>}
+          {isTauri() && <label>Пароль дневника <input className="settings-input" type="password" autoComplete="current-password" value={securePassword} onChange={(e) => { setSecurePassword(e.target.value); setDiskCheck(""); setSnapshotCheck(""); setConfirmRealRestore(false); }} disabled={busy} /></label>}
+        {restoreCheck && <button type="button" className="modal__button" disabled={busy || !isTauri() || !securePassword} onClick={testOnDiskCopy}>{english ? 'Test on SQLite copy' : 'Тест на копии SQLite'}</button>}
+        {diskCheck && <button type="button" className="modal__button" disabled={busy || !isTauri() || !securePassword} onClick={testSafetySnapshot}>{english ? 'Verify safety snapshot' : 'Проверить защитную копию'}</button>}
         {snapshotCheck && <p role="status" style={{overflowWrap:'anywhere'}}>{snapshotCheck}</p>}
         {diskCheck && <p role="status" style={{overflowWrap:'anywhere'}}>{diskCheck}</p>}{backupError && <p role="alert" style={{color:'#ff9999',overflowWrap:'anywhere'}}>{backupError}</p>}
       </Modal>
@@ -225,8 +228,9 @@ export function SettingsPage() {
         <p>{english ? 'This will replace entries, tags, preferences and calendar colors (when included) in one SQLite transaction. Existing entries not in the backup will disappear. A safety snapshot of the old database will be created automatically.' : 'Записи, теги и настройки и цвета календаря (если они есть в JSON) будут заменены в одной транзакции SQLite. Записи, которых нет в копии, исчезнут из дневника. Старая база будет автоматически сохранена отдельным файлом.'}</p>
         <p><strong>{pendingImport?.entries.length ?? 0} {english ? 'entries' : 'записей'}, {pendingImport?.tags.length ?? 0} {english ? 'tags' : 'тегов'}</strong></p>
       </Modal>
-      <Modal open={confirmReset} title={english ? 'Delete all data?' : 'Удалить все данные?'} onClose={() => !busy && setConfirmReset(false)} footer={<><button className="modal__button" disabled={busy} onClick={() => setConfirmReset(false)}>{english ? 'Cancel' : 'Отмена'}</button><button className="modal__button modal__button--danger" disabled={busy} onClick={resetAll}>{busy ? '…' : (english ? 'Delete' : 'Удалить')}</button></>}>
+      <Modal open={confirmReset} title={english ? 'Delete all data?' : 'Удалить все данные?'} onClose={() => !busy && (setConfirmReset(false), setSecurePassword(""))} footer={<><button className="modal__button" disabled={busy} onClick={() => { setConfirmReset(false); setSecurePassword(""); }}>{english ? 'Cancel' : 'Отмена'}</button><button className="modal__button modal__button--danger" disabled={busy} onClick={resetAll}>{busy ? '…' : (english ? 'Delete' : 'Удалить')}</button></>}>
         <p>{english ? (isTauri() ? 'Entries, tags, calendar colors and settings will be deleted from SQLite. A recovery snapshot will be saved first.' : 'Entries, tags, calendar colors and settings will be deleted from this browser.') : (isTauri() ? 'Записи, теги, цвета календаря и настройки будут удалены из SQLite. Перед удалением будет создана защитная копия.' : 'Записи, теги, цвета календаря и настройки будут удалены из этого браузера.')}</p>
+          {isTauri() && <label>Пароль дневника <input className="settings-input" type="password" autoComplete="current-password" value={securePassword} onChange={(e) => { setSecurePassword(e.target.value); setDiskCheck(""); setSnapshotCheck(""); setConfirmRealRestore(false); }} disabled={busy} /></label>}
       </Modal>
     </main>
   );

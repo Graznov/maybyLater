@@ -5,6 +5,7 @@ use std::sync::{Arc, Condvar, Mutex};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionStatus {
     Locked,
+    Initializing,
     Locking,
     Unlocked,
 }
@@ -18,6 +19,16 @@ pub struct SecureSession {
     state: Mutex<SessionState>,
     changed: Condvar,
     connection: Mutex<Option<Connection>>,
+}
+
+pub struct InitializationGuard {
+    session: Arc<SecureSession>,
+}
+
+impl Drop for InitializationGuard {
+    fn drop(&mut self) {
+        let _ = self.session.cancel_initialization();
+    }
 }
 
 struct OperationPermit {
@@ -47,6 +58,38 @@ impl SecureSession {
     pub fn status(&self) -> Result<SessionStatus, String> {
         let state = self.state.lock().map_err(|e| e.to_string())?;
         Ok(state.status)
+    }
+
+    pub fn begin_initialization(self: &Arc<Self>) -> Result<InitializationGuard, String> {
+        let mut state = self.state.lock().map_err(|e| e.to_string())?;
+        if state.status != SessionStatus::Locked {
+            return Err("Создание дневника запрещено: сессия занята".into());
+        }
+        state.status = SessionStatus::Initializing;
+        self.changed.notify_all();
+        Ok(InitializationGuard { session: Arc::clone(self) })
+    }
+
+    pub fn finish_initialization(&self, conn: Connection) -> Result<(), String> {
+        let mut state = self.state.lock().map_err(|e| e.to_string())?;
+        if state.status != SessionStatus::Initializing {
+            return Err("Сессия не находится в состоянии инициализации".into());
+        }
+        let mut connection = self.connection.lock().map_err(|e| e.to_string())?;
+        *connection = Some(conn);
+        state.status = SessionStatus::Unlocked;
+        self.changed.notify_all();
+        Ok(())
+    }
+
+    pub fn cancel_initialization(&self) -> Result<(), String> {
+        let mut state = self.state.lock().map_err(|e| e.to_string())?;
+        if state.status != SessionStatus::Initializing {
+            return Err("Невозможно отменить инициализацию: неверное состояние сессии".into());
+        }
+        state.status = SessionStatus::Locked;
+        self.changed.notify_all();
+        Ok(())
     }
 
     fn begin_operation(self: &Arc<Self>) -> Result<OperationPermit, String> {
@@ -93,6 +136,9 @@ impl SecureSession {
 
         match state.status {
             SessionStatus::Locked => return Ok(()),
+            SessionStatus::Initializing => {
+                return Err("Нельзя заблокировать дневник во время инициализации".into());
+            }
             SessionStatus::Locking => {
                 return Err("Блокировка уже выполняется".into());
             }
@@ -137,6 +183,42 @@ impl SecureSession {
 impl Default for SecureSession {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod initialization_tests {
+    use super::{SecureSession, SessionStatus};
+
+    #[test]
+    fn initialization_guard_restores_locked_on_drop() {
+        let session = std::sync::Arc::new(SecureSession::new());
+        {
+            let _guard = session.begin_initialization().unwrap();
+            assert_eq!(session.status().unwrap(), SessionStatus::Initializing);
+        }
+        assert_eq!(session.status().unwrap(), SessionStatus::Locked);
+        let _guard = session.begin_initialization().unwrap();
+        assert_eq!(session.status().unwrap(), SessionStatus::Initializing);
+    }
+
+    #[test]
+    fn initialization_reserves_session_and_supports_cancel_and_finish() {
+        let session = std::sync::Arc::new(SecureSession::new());
+        assert_eq!(session.status().unwrap(), SessionStatus::Locked);
+        let _guard = session.begin_initialization().unwrap();
+        assert_eq!(session.status().unwrap(), SessionStatus::Initializing);
+        assert!(session.begin_initialization().is_err());
+        assert!(session.lock_and_wait().is_err());
+        assert!(session.unlock_with_connection(rusqlite::Connection::open_in_memory().unwrap()).is_err());
+        session.cancel_initialization().unwrap();
+        assert_eq!(session.status().unwrap(), SessionStatus::Locked);
+        let _second_guard = session.begin_initialization().unwrap();
+        session.finish_initialization(rusqlite::Connection::open_in_memory().unwrap()).unwrap();
+        assert_eq!(session.status().unwrap(), SessionStatus::Unlocked);
+        assert!(session.begin_initialization().is_err());
+        session.lock_and_wait().unwrap();
+        assert_eq!(session.status().unwrap(), SessionStatus::Locked);
     }
 }
 

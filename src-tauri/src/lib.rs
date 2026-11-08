@@ -4,7 +4,10 @@ mod preferences_repository;
 mod calendar_color_repository;
 mod secure_session;
 mod sqlcipher_connection;
+mod migration_types;
 mod schema_migrations;
+mod secure_migrations;
+mod plaintext_migration;
 
 use tauri::Manager;
 use serde::Deserialize;
@@ -19,6 +22,7 @@ fn get_secure_session_status(
     Ok(match status {
         secure_session::SessionStatus::Locked => "Locked",
         secure_session::SessionStatus::Locking => "Locking",
+        secure_session::SessionStatus::Initializing => "Initializing",
         secure_session::SessionStatus::Unlocked => "Unlocked",
     }
     .to_string())
@@ -70,16 +74,142 @@ fn unlock_secure_database(
     session: tauri::State<'_, std::sync::Arc<secure_session::SecureSession>>,
     password: String,
 ) -> Result<(), String> {
-    let path = app.path().app_config_dir()
-        .map_err(|e| e.to_string())?
-        .join("maybe-later.db");
+    let directory = app.path().app_config_dir()
+        .map_err(|e| e.to_string())?;
+    let path = directory.join("maybe-later.db");
+    let marker = directory.join("maybe-later-encryption-pending");
+
+    // Старую SQLite-базу и незавершённую миграцию открываем только
+    // через безопасный сценарий миграции. На всё время переключения
+    // резервируем сессию, чтобы параллельные операции не открыли базу.
+    let migration_required = marker.exists()
+        || (path.is_file()
+            && sqlcipher_connection::has_plaintext_sqlite_header(&path)?);
+
+    if migration_required {
+        let _initialization_guard = session.begin_initialization()?;
+
+        let backup = directory.join("maybe-later-plaintext-backup.db");
+        let encrypted = directory.join("maybe-later-encrypted-pending.db");
+
+        let conn = plaintext_migration::migrate(
+            &path,
+            &backup,
+            &encrypted,
+            &marker,
+            &password,
+        )?;
+
+        return session.finish_initialization(conn);
+    }
 
     if !path.is_file() {
         return Err("Файл базы данных не найден".into());
     }
 
-    let conn = sqlcipher_connection::open_verified_database(&path, &password)?;
+    let mut conn = sqlcipher_connection::open_verified_database(&path, &password)?;
+    secure_migrations::run_pending_migrations(&mut conn)?;
     session.unlock_with_connection(conn)
+}
+
+#[tauri::command]
+fn migrate_plaintext_database(
+    app: tauri::AppHandle,
+    session: tauri::State<'_, std::sync::Arc<secure_session::SecureSession>>,
+    password: String,
+) -> Result<(), String> {
+    // Не допускаем параллельное создание/открытие базы и резервируем сессию
+    // на всё время файлового переключения.
+    let _initialization_guard = session.begin_initialization()?;
+
+    let result = (|| -> Result<rusqlite::Connection, String> {
+        if password.is_empty() {
+            return Err("Пароль не может быть пустым".into());
+        }
+
+        let directory = app.path().app_config_dir().map_err(|e| e.to_string())?;
+        let source = directory.join("maybe-later.db");
+        let backup = directory.join("maybe-later-plaintext-backup.db");
+        let encrypted = directory.join("maybe-later-encrypted-pending.db");
+        let marker = directory.join("maybe-later-encryption-pending");
+
+        if !source.is_file() && !marker.exists() {
+            return Err("Файл дневника не найден".into());
+        }
+
+        // При наличии маркера разрешаем повторный запуск: migrate() сама
+        // определит безопасное состояние файлов и продолжит восстановление.
+        if !marker.exists()
+            && !sqlcipher_connection::has_plaintext_sqlite_header(&source)?
+        {
+            return Err("Активная база уже не является незашифрованной SQLite-базой".into());
+        }
+
+        plaintext_migration::migrate(
+            &source,
+            &backup,
+            &encrypted,
+            &marker,
+            &password,
+        )
+    })();
+
+    match result {
+        Ok(conn) => session.finish_initialization(conn),
+        // При ошибке InitializationGuard вернёт сессию в Locked.
+        Err(error) => Err(error),
+    }
+}
+
+#[tauri::command]
+fn get_secure_database_presence(app: tauri::AppHandle) -> Result<String, String> {
+    let path = app.path().app_config_dir()
+        .map_err(|e| e.to_string())?
+        .join("maybe-later.db");
+    let pending = path.with_file_name("maybe-later-encryption-pending");
+    if pending.exists() {
+        return Ok("migration_pending".into());
+    }
+    match std::fs::metadata(&path) {
+        Ok(metadata) if metadata.is_file() => {
+            if sqlcipher_connection::has_plaintext_sqlite_header(&path)? {
+                Ok("plaintext".into())
+            } else {
+                Ok("existing".into())
+            }
+        }
+        Ok(_) => Err("Путь дневника существует, но не является файлом".into()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok("missing".into()),
+        Err(error) => Err(format!("Не удалось проверить наличие дневника: {error}")),
+    }
+}
+
+#[tauri::command]
+fn create_secure_database(
+    app: tauri::AppHandle,
+    session: tauri::State<'_, std::sync::Arc<secure_session::SecureSession>>,
+    password: String,
+) -> Result<(), String> {
+    let _initialization_guard = session.begin_initialization()?;
+    let result = (|| -> Result<rusqlite::Connection, String> {
+        let directory = app.path().app_config_dir().map_err(|e| e.to_string())?;
+        let path = directory.join("maybe-later.db");
+        if path.exists() {
+            return Err("Файл дневника уже существует. Создание отменено".into());
+        }
+        std::fs::create_dir_all(&directory)
+            .map_err(|e| format!("Не удалось создать каталог дневника: {e}"))?;
+        sqlcipher_connection::initialize_encrypted_database(&path, &password)?;
+        sqlcipher_connection::open_verified_database(&path, &password)
+    })();
+    match result {
+        Ok(conn) => session.finish_initialization(conn),
+        Err(error) => {
+            session.cancel_initialization()
+                .map_err(|cancel_error| format!("{error}; ошибка отмены инициализации: {cancel_error}"))?;
+            Err(error)
+        }
+    }
 }
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -152,9 +282,9 @@ fn clear_user_data(conn: &mut rusqlite::Connection) -> Result<(), String> {
 }
 
 // Verify a consistent SQLite snapshot before any destructive change.
-fn verify_reset_snapshot(source: &rusqlite::Connection, snapshot: &std::path::Path) -> Result<(), String> {
-    let copy = rusqlite::Connection::open_with_flags(snapshot, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
-        .map_err(|e| format!("Не удалось открыть защитную копию: {e}"))?;
+fn verify_reset_snapshot(source: &rusqlite::Connection, snapshot: &std::path::Path, password: &str) -> Result<(), String> {
+    let copy = sqlcipher_connection::open_verified_database(snapshot, password)
+        .map_err(|e| format!("Не удалось проверить зашифрованную защитную копию: {e}"))?;
     let integrity: String = copy.query_row("PRAGMA integrity_check", [], |r| r.get(0))
         .map_err(|e| e.to_string())?;
     if integrity != "ok" { return Err(format!("Нарушена целостность защитной копии: {integrity}")); }
@@ -185,45 +315,43 @@ fn verify_reset_snapshot(source: &rusqlite::Connection, snapshot: &std::path::Pa
 // Called only after the frontend has stopped and drained all SQLite writers.
 // Returns the permanent recovery snapshot path on success.
 #[tauri::command]
-fn reset_sqlite_data(app: tauri::AppHandle) -> Result<String, String> {
+fn reset_sqlite_data(app: tauri::AppHandle, password: String, session: tauri::State<'_, std::sync::Arc<secure_session::SecureSession>>) -> Result<String, String> {
     let path = app.path().app_config_dir().map_err(|e| e.to_string())?.join("maybe-later.db");
     if !path.is_file() { return Err("Файл базы SQLite не найден".into()); }
-    let mut conn = rusqlite::Connection::open_with_flags(
-        &path, rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE,
-    ).map_err(|e| e.to_string())?;
-    conn.busy_timeout(std::time::Duration::from_secs(10)).map_err(|e| e.to_string())?;
+    session.with_connection(|conn| {
 
     let timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
         .map_err(|e| e.to_string())?.as_nanos();
     let snapshot = path.with_file_name(format!("maybe-later-before-reset-{timestamp}.db"));
     conn.execute("VACUUM INTO ?1", [snapshot.to_string_lossy().as_ref()])
         .map_err(|e| format!("Не удалось создать защитную копию SQLite: {e}"))?;
-    verify_reset_snapshot(&conn, &snapshot)
+    verify_reset_snapshot(conn, &snapshot, &password)
         .map_err(|e| format!("Сброс отменён: защитная копия не прошла проверку: {e}. Файл: {}", snapshot.display()))?;
-    clear_user_data(&mut conn)
+    clear_user_data(conn)
         .map_err(|e| format!("Сброс не выполнен: {e}. Защитная копия: {}", snapshot.display()))?;
     Ok(snapshot.to_string_lossy().into_owned())
+    })
 }
 
 // Tests the reset on a disposable SQLite copy, never on the installed database.
 #[tauri::command]
-fn test_sqlite_reset_on_copy(app: tauri::AppHandle) -> Result<String, String> {
+fn test_sqlite_reset_on_copy(app: tauri::AppHandle, password: String, session: tauri::State<'_, std::sync::Arc<secure_session::SecureSession>>) -> Result<String, String> {
     let path = app.path().app_config_dir().map_err(|e| e.to_string())?.join("maybe-later.db");
     if !path.is_file() { return Err("Файл базы SQLite не найден".into()); }
-    let source = rusqlite::Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
-        .map_err(|e| e.to_string())?;
-    source.busy_timeout(std::time::Duration::from_secs(10)).map_err(|e| e.to_string())?;
+
     let timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
         .map_err(|e| e.to_string())?.as_nanos();
     let copy_path = path.with_file_name(format!("maybe-later-reset-test-{timestamp}.db"));
     struct TemporaryDb(std::path::PathBuf);
     impl Drop for TemporaryDb { fn drop(&mut self) { let _ = std::fs::remove_file(&self.0); } }
     let _cleanup = TemporaryDb(copy_path.clone());
+    session.with_connection(|source| {
     source.execute("VACUUM INTO ?1", [copy_path.to_string_lossy().as_ref()])
         .map_err(|e| format!("Не удалось создать тестовую копию: {e}"))?;
-    verify_reset_snapshot(&source, &copy_path)?;
-    drop(source);
-    let mut copy = rusqlite::Connection::open(&copy_path).map_err(|e| e.to_string())?;
+    verify_reset_snapshot(source, &copy_path, &password)?;
+        Ok(())
+    })?;
+    let mut copy = sqlcipher_connection::open_verified_database(&copy_path, &password)?;
     let metadata_before: Vec<(String, String)> = {
         let mut stmt = copy.prepare("SELECT key, value FROM app_metadata ORDER BY key").map_err(|e| e.to_string())?;
         let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).map_err(|e| e.to_string())?;
@@ -245,11 +373,10 @@ fn test_sqlite_reset_on_copy(app: tauri::AppHandle) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn restore_sqlite_backup(app: tauri::AppHandle, payload: BackupPayload) -> Result<String, String> {
+fn restore_sqlite_backup(app: tauri::AppHandle, payload: BackupPayload, password: String, session: tauri::State<'_, std::sync::Arc<secure_session::SecureSession>>) -> Result<String, String> {
     let path = app.path().app_config_dir().map_err(|e| e.to_string())?.join("maybe-later.db");
     if !path.exists() { return Err("Файл базы SQLite не найден".into()); }
-    let mut conn = rusqlite::Connection::open(&path).map_err(|e| e.to_string())?;
-    conn.busy_timeout(std::time::Duration::from_secs(10)).map_err(|e| e.to_string())?;
+    session.with_connection(|conn| {
     // A SQLite-consistent, separate on-disk snapshot is created BEFORE any changes.
     // VACUUM INTO includes committed WAL data and fails if the destination exists.
     let timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
@@ -257,67 +384,37 @@ fn restore_sqlite_backup(app: tauri::AppHandle, payload: BackupPayload) -> Resul
     let snapshot = path.with_file_name(format!("maybe-later-before-restore-{timestamp}.db"));
     conn.execute("VACUUM INTO ?1", [snapshot.to_string_lossy().as_ref()])
         .map_err(|e| format!("Не удалось создать защитную копию SQLite: {e}"))?;
-    apply_backup(&mut conn, &payload)?;
-    Ok(snapshot.to_string_lossy().into_owned())
+        verify_reset_snapshot(conn, &snapshot, &password)?;
+        apply_backup(conn, &payload)?;
+        Ok(snapshot.to_string_lossy().into_owned())
+    })
 }
 
 // Creates a persistent, SQLite-consistent safety snapshot and verifies it can be opened.
 // No writes are made to the live database. The snapshot remains available for recovery.
 #[tauri::command]
-fn test_sqlite_safety_snapshot(app: tauri::AppHandle) -> Result<String, String> {
+fn test_sqlite_safety_snapshot(app: tauri::AppHandle, password: String, session: tauri::State<'_, std::sync::Arc<secure_session::SecureSession>>) -> Result<String, String> {
     let path = app.path().app_config_dir().map_err(|e| e.to_string())?.join("maybe-later.db");
     if !path.is_file() { return Err("Файл базы SQLite не найден".into()); }
-    let source = rusqlite::Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
-        .map_err(|e| e.to_string())?;
-    source.busy_timeout(std::time::Duration::from_secs(10)).map_err(|e| e.to_string())?;
-    let timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
-        .map_err(|e| e.to_string())?.as_nanos();
-    let snapshot = path.with_file_name(format!("maybe-later-safety-check-{timestamp}.db"));
-    source.execute("VACUUM INTO ?1", [snapshot.to_string_lossy().as_ref()])
-        .map_err(|e| format!("Не удалось создать защитную копию: {e}"))?;
-    let result = (|| -> Result<(i64, i64), String> {
-        let copy = rusqlite::Connection::open_with_flags(&snapshot, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
-            .map_err(|e| format!("Копия не открывается: {e}"))?;
-        let integrity: String = copy.query_row("PRAGMA integrity_check", [], |r| r.get(0)).map_err(|e| e.to_string())?;
-        if integrity != "ok" { return Err(format!("Ошибка целостности копии: {integrity}")); }
-        // Compare every persisted field, not just the counts.
-        for (table, columns) in [
-            ("entries", "id, title, content, date, tags, created_at, updated_at"),
-            ("tags", "id, name, color"),
-            ("preferences", "key, value"),
-            ("calendar_colors", "date, color"),
-        ] {
-            // preferences is keyed by `key`, unlike entries and tags (keyed by `id`).
-            let order_column = match table { "preferences" => "key", "calendar_colors" => "date", _ => "id" };
-            let sql = format!("SELECT {columns} FROM {table} ORDER BY {order_column}");
-            let read = |conn: &rusqlite::Connection| -> Result<Vec<Vec<String>>, String> {
-                let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
-                let cols = stmt.column_count();
-                let rows = stmt.query_map([], |row| (0..cols).map(|i| row.get::<_, String>(i)).collect::<rusqlite::Result<Vec<_>>>())
-                    .map_err(|e| e.to_string())?;
-                rows.collect::<rusqlite::Result<Vec<_>>>().map_err(|e| e.to_string())
-            };
-            if read(&source)? != read(&copy)? { return Err(format!("Данные {table} в копии не совпадают с основной базой")); }
-        }
-        let entries: i64 = copy.query_row("SELECT COUNT(*) FROM entries", [], |r| r.get(0)).map_err(|e| e.to_string())?;
-        let tags: i64 = copy.query_row("SELECT COUNT(*) FROM tags", [], |r| r.get(0)).map_err(|e| e.to_string())?;
-        Ok((entries, tags))
-    })();
-    match result {
-        Ok((entries, tags)) => Ok(format!("Защитная копия создана и прочитана: {entries} записей, {tags} тегов. Все поля совпадают, integrity_check: ok. Файл: {}", snapshot.display())),
-        Err(error) => Err(format!("Проверка защитной копии не прошла: {error}. Файл: {}", snapshot.display())),
-    }
+    session.with_connection(|source| {
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|e| e.to_string())?.as_nanos();
+        let snapshot = path.with_file_name(format!("maybe-later-safety-check-{timestamp}.db"));
+        source.execute("VACUUM INTO ?1", [snapshot.to_string_lossy().as_ref()])
+            .map_err(|e| format!("Не удалось создать защитную копию: {e}"))?;
+        verify_reset_snapshot(source, &snapshot, &password)
+            .map_err(|e| format!("Проверка защитной копии не прошла: {e}. Файл: {}", snapshot.display()))?;
+        Ok(format!("Зашифрованная защитная копия создана и проверена. Файл: {}", snapshot.display()))
+    })
 }
 
 // Test the production restore against a real on-disk COPY of the live database.
 // The original database is read for the snapshot only; no changes are applied to it.
 #[tauri::command]
-fn test_sqlite_restore_on_copy(app: tauri::AppHandle, payload: BackupPayload) -> Result<String, String> {
+fn test_sqlite_restore_on_copy(app: tauri::AppHandle, payload: BackupPayload, password: String, session: tauri::State<'_, std::sync::Arc<secure_session::SecureSession>>) -> Result<String, String> {
     let path = app.path().app_config_dir().map_err(|e| e.to_string())?.join("maybe-later.db");
     if !path.exists() { return Err("Файл базы SQLite не найден".into()); }
-    let source = rusqlite::Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
-        .map_err(|e| e.to_string())?;
-    source.busy_timeout(std::time::Duration::from_secs(10)).map_err(|e| e.to_string())?;
     let timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
         .map_err(|e| e.to_string())?.as_nanos();
     let copy_path = path.with_file_name(format!("maybe-later-restore-test-{timestamp}.db"));
@@ -325,10 +422,12 @@ fn test_sqlite_restore_on_copy(app: tauri::AppHandle, payload: BackupPayload) ->
     struct TemporaryDb(std::path::PathBuf);
     impl Drop for TemporaryDb { fn drop(&mut self) { let _ = std::fs::remove_file(&self.0); } }
     let _cleanup = TemporaryDb(copy_path.clone());
+    session.with_connection(|source| {
     source.execute("VACUUM INTO ?1", [copy_path.to_string_lossy().as_ref()])
         .map_err(|e| format!("Не удалось создать тестовую копию: {e}"))?;
-    drop(source);
-    let mut copy = rusqlite::Connection::open(&copy_path).map_err(|e| e.to_string())?;
+        Ok(())
+    })?;
+    let mut copy = sqlcipher_connection::open_verified_database(&copy_path, &password)?;
     copy.busy_timeout(std::time::Duration::from_secs(10)).map_err(|e| e.to_string())?;
     apply_backup(&mut copy, &payload)?;
     let entry_count: i64 = copy.query_row("SELECT COUNT(*) FROM entries", [], |r| r.get(0)).map_err(|e| e.to_string())?;
@@ -404,7 +503,6 @@ fn verify_sqlite_restore(payload: BackupPayload) -> Result<String, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let migrations = schema_migrations::migrations();
 
     tauri::Builder::default()
         .manage(std::sync::Arc::new(secure_session::SecureSession::new()))
@@ -412,6 +510,9 @@ pub fn run() {
     .plugin(tauri_plugin_fs::init())
 .invoke_handler(tauri::generate_handler![
     get_secure_session_status,
+    get_secure_database_presence,
+    create_secure_database,
+    migrate_plaintext_database,
     unlock_secure_database,
     lock_secure_database,
     delete_secure_entry,
@@ -437,11 +538,6 @@ pub fn run() {
     reset_sqlite_data,
     test_sqlite_reset_on_copy,
 ])
-        .plugin(
-            tauri_plugin_sql::Builder::new()
-                .add_migrations("sqlite:maybe-later.db", migrations)
-                .build(),
-        )
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

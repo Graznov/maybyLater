@@ -83,13 +83,22 @@ export function validateBackup(raw: string): Payload {
   }
   return { entries, tags, preferences, calendarColors, data };
 }
-export async function restoreBackup(payload: Payload): Promise<string> {
+export async function restoreBackup(payload: Payload, password: string): Promise<string> {
   if (isTauri()) {
     await waitForSqliteEntryWrites();
     await waitForSqliteTagWrites();
     await waitForSqlitePreferencesWrites();
     await waitForSqliteCalendarWrites();
-    const snapshotPath = await invoke<string>('restore_sqlite_backup', { payload: { entries: payload.entries, tags: payload.tags, preferences: payload.preferences, calendarColors: payload.calendarColors } });
+    if (!password) throw new Error('Введите пароль дневника для восстановления резервной копии');
+    const snapshotPath = await invoke<string>('restore_sqlite_backup', {
+      payload: {
+        entries: payload.entries,
+        tags: payload.tags,
+        preferences: payload.preferences,
+        calendarColors: payload.calendarColors
+      },
+      password
+    });
     sessionStorage.setItem('maybeLater.restoreNotice', `Восстановление выполнено. Защитная копия прежней SQLite: ${snapshotPath}`);
     // Preferences are restored inside the same Rust SQLite transaction.
     // A legacy backup without preferences leaves the current SQLite settings intact.

@@ -9,6 +9,7 @@ import { loadEntriesFromSqlite } from './db/loadEntries';
 import { loadTagsFromSqlite } from './db/tagsRepository';
 import { hydrateTags } from './features/tags/tagsSlice';
 import App from './App';
+import UnlockScreen from './UnlockScreen';
 import { loadPreferencesFromSqlite } from './db/loadPreferences';
 import { hydratePreferences } from './features/preferences/preferencesSlice';
 import { migrateCalendarColorsToSqlite } from './db/migrateCalendarColors';
@@ -61,4 +62,8 @@ async function bootstrap() {
     );
   }
 }
-void bootstrap();
+if (isTauri()) {
+  root.render(<UnlockScreen onUnlocked={() => { void bootstrap(); }} />);
+} else {
+  void bootstrap();
+}
