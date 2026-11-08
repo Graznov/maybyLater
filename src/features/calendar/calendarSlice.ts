@@ -34,6 +34,7 @@ const calendarSlice = createSlice({
   name: 'calendar',
   initialState,
   reducers: {
+    clearPrivateCalendarColors(state) { state.dateColors = {}; },
     hydrateCalendarColors(state, action: PayloadAction<CalendarColors>) {
       state.dateColors = action.payload;
     },
@@ -51,5 +52,5 @@ const calendarSlice = createSlice({
   },
 });
 
-export const { setDateColor, clearDateColor, hydrateCalendarColors } = calendarSlice.actions;
+export const { clearPrivateCalendarColors, setDateColor, clearDateColor, hydrateCalendarColors } = calendarSlice.actions;
 export default calendarSlice.reducer;

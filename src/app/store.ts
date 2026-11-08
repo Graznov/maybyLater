@@ -19,7 +19,18 @@ import preferencesReducer from '../features/preferences/preferencesSlice';
 let sqliteReadOnly = false;
 // Synchronous gate: no new SQLite writes may start while a reset is in progress.
 let sqliteResetPending = false;
+// Lock gate is raised synchronously before draining writes and remains raised
+// until the next successful unlock/bootstrap has hydrated the private state.
+let sqliteLockPending = false;
+export function beginSqliteLock(): void {
+  if (sqliteLockPending) throw new Error('Блокировка уже выполняется');
+  if (sqliteResetPending) throw new Error('Нельзя заблокировать дневник во время сброса данных');
+  sqliteLockPending = true;
+}
+export function cancelSqliteLock(): void { sqliteLockPending = false; }
+export function isSqliteLockPending(): boolean { return sqliteLockPending; }
 export function beginSqliteReset(): void {
+  if (sqliteLockPending) throw new Error('Нельзя сбросить данные во время блокировки дневника');
   if (sqliteResetPending) throw new Error('Сброс уже выполняется');
   sqliteResetPending = true;
 }
@@ -32,8 +43,15 @@ let updateFailed = false;
 let destructiveOperationPending = false;
 const latestEntries = new Map<string, Entry>();
 export function sqliteUpdateHasFailed(): boolean { return updateFailed; }
+export function clearSqliteInMemoryCache(): void {
+  latestEntries.clear();
+}
 export async function waitForSqliteEntryWrites(): Promise<void> {
-  if (creatingEntry || destructiveOperationPending) throw new Error('Дождитесь завершения операции с записью');
+  // The lock gate prevents new work; wait for already-started create/delete/duplicate
+  // operations rather than aborting the lock request.
+  while (creatingEntry || destructiveOperationPending) {
+    await new Promise<void>(resolve => window.setTimeout(resolve, 20));
+  }
   await updateQueue;
   if (updateFailed) throw new Error('Предыдущая запись в SQLite завершилась ошибкой');
 }
@@ -49,7 +67,7 @@ const blockedEntryActions = new Set([
   'entries/deleteEntry', 'entries/renameTagInEntries', 'entries/removeTagFromEntries',
 ]);
 const readOnlyGuard: Middleware = () => next => action => {
-  if (sqliteResetPending && typeof action === 'object' && action !== null && 'type' in action &&
+  if ((sqliteResetPending || sqliteLockPending) && typeof action === 'object' && action !== null && 'type' in action &&
       typeof action.type === 'string' && blockedEntryActions.has(action.type)) return action;
   if (sqliteReadOnly && typeof action === 'object' && action !== null && 'type' in action
       && typeof action.type === 'string' && blockedEntryActions.has(action.type)) {
@@ -147,7 +165,7 @@ export async function waitForSqlitePreferencesWrites(): Promise<void> {
 const sqlitePreferencesWriter: Middleware = api => next => action => {
   if (!isTauri() || typeof action !== 'object' || action === null || !('type' in action) ||
       (action.type !== 'preferences/setPreference' && action.type !== 'preferences/setJournalName')) return next(action);
-  if (sqliteResetPending) return action;
+  if (sqliteResetPending || sqliteLockPending) return action;
   if (preferencesWriteFailed) {
     console.error('❌ SQLite preferences: изменение заблокировано после ошибки сохранения');
     return action;
@@ -177,10 +195,18 @@ export async function waitForSqliteCalendarWrites(): Promise<void> {
   await calendarWriteQueue;
   if (calendarWriteFailed) throw new Error('Сохранение цветов календаря SQLite завершилось ошибкой');
 }
+
+export async function waitForAllSqliteWrites(): Promise<void> {
+  await Promise.all([
+    waitForSqliteEntryWrites(),
+    waitForSqlitePreferencesWrites(),
+    waitForSqliteCalendarWrites(),
+  ]);
+}
 const sqliteCalendarWriter: Middleware = () => next => action => {
   if (!isTauri() || typeof action !== 'object' || action === null || !('type' in action) ||
       (action.type !== 'calendar/setDateColor' && action.type !== 'calendar/clearDateColor')) return next(action);
-  if (sqliteResetPending) return action;
+  if (sqliteResetPending || sqliteLockPending) return action;
   if (calendarWriteFailed) {
     console.error('❌ SQLite calendar: изменение заблокировано после ошибки сохранения');
     return action;

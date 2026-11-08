@@ -34,6 +34,7 @@ const tagsSlice = createSlice({
   name: 'tags',
   initialState,
   reducers: {
+    clearPrivateTags(state) { state.items = []; },
     hydrateTags(state, action: PayloadAction<Tag[]>) { state.items = action.payload; },
     addTag: {
       reducer(state, action: PayloadAction<Tag>) {
@@ -71,5 +72,5 @@ const tagsSlice = createSlice({
   },
 });
 
-export const { hydrateTags, addTag, updateTag, deleteTag } = tagsSlice.actions;
+export const { clearPrivateTags, hydrateTags, addTag, updateTag, deleteTag } = tagsSlice.actions;
 export default tagsSlice.reducer;

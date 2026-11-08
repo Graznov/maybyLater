@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { BarChart3, BookOpen, CalendarDays, NotebookPen, Pencil, Settings, SquarePen, Tags } from 'lucide-react';
+import { BarChart3, BookOpen, CalendarDays, LockKeyhole, NotebookPen, Pencil, Settings, SquarePen, Tags } from 'lucide-react';
+import { isTauri } from '@tauri-apps/api/core';
 import { NavLink } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '../../app/hooks';
 import { setTag } from '../../features/entries/entriesSlice';
@@ -93,6 +94,17 @@ export function Sidebar() {
           {quote}
         </div>
         <div className="sidebar__bottom">
+          {isTauri() && (
+            <button
+              type="button"
+              className="sidebar__item sidebar__lock"
+              onClick={() => window.dispatchEvent(new Event('journal-lock-request'))}
+              title="Заблокировать дневник"
+            >
+              <LockKeyhole size={20} />
+              <span>Заблокировать дневник</span>
+            </button>
+          )}
           <NavLink to="/settings" className="sidebar__item"><Settings size={20} /><span>{t('settings')}</span></NavLink>
         </div>
       </aside>

@@ -55,6 +55,12 @@ const entriesSlice = createSlice({
   name: 'entries',
   initialState,
   reducers: {
+    clearPrivateEntries(state) {
+      state.items = [];
+      state.selectedId = null;
+      state.query = '';
+      state.tag = null;
+    },
     hydrateEntries(state, action: PayloadAction<Entry[]>) {
       state.items = action.payload;
       state.selectedId = state.items.find(entry => entry.date === state.selectedDate)?.id ?? null;
@@ -183,6 +189,7 @@ const entriesSlice = createSlice({
 
 export const {
   hydrateEntries,
+  clearPrivateEntries,
   sqliteEntryCreated,
   sqliteEntryDeleted,
   sqliteEntryUpdated,

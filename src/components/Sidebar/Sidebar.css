@@ -232,3 +232,17 @@
 .sidebar__tags-list i { flex: 0 0 9px; }
 .sidebar__quote { min-height: 0; flex-shrink: 1; }
 .sidebar__bottom { margin-top: auto; }
+
+
+.sidebar__lock {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+.sidebar__lock:hover {
+  color: white;
+  background: rgba(255, 255, 255, 0.08);
+}

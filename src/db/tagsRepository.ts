@@ -1,4 +1,4 @@
-import { isSqliteResetPending } from '../app/store';
+import { isSqliteLockPending, isSqliteResetPending } from '../app/store';
 import { invoke } from '@tauri-apps/api/core';
 import type { Tag } from '../types/tag';
 
@@ -26,7 +26,7 @@ export async function loadTagsFromSqlite(): Promise<Tag[]> {
 }
 
 export function createTagInSqlite(tag: Tag): Promise<void> {
-  if (isSqliteResetPending()) return Promise.reject(new Error('Сброс данных выполняется'));
+  if (isSqliteResetPending() || isSqliteLockPending()) return Promise.reject(new Error('Сброс данных выполняется'));
   return trackTagWrite(createTagImpl(tag));
 }
 async function createTagImpl(tag: Tag): Promise<void> {
@@ -35,7 +35,7 @@ async function createTagImpl(tag: Tag): Promise<void> {
 
 /** SQLite triggers update entries.tags in the same transaction as this UPDATE. */
 export function updateTagInSqlite(tag: Tag): Promise<void> {
-  if (isSqliteResetPending()) return Promise.reject(new Error('Сброс данных выполняется'));
+  if (isSqliteResetPending() || isSqliteLockPending()) return Promise.reject(new Error('Сброс данных выполняется'));
   return trackTagWrite(updateTagImpl(tag));
 }
 async function updateTagImpl(tag: Tag): Promise<void> {
@@ -44,7 +44,7 @@ async function updateTagImpl(tag: Tag): Promise<void> {
 
 /** SQLite trigger removes the tag from entries atomically with DELETE. */
 export function deleteTagInSqlite(id: string): Promise<void> {
-  if (isSqliteResetPending()) return Promise.reject(new Error('Сброс данных выполняется'));
+  if (isSqliteResetPending() || isSqliteLockPending()) return Promise.reject(new Error('Сброс данных выполняется'));
   return trackTagWrite(deleteTagImpl(id));
 }
 async function deleteTagImpl(id: string): Promise<void> {
