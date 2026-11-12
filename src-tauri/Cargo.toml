@@ -24,4 +24,5 @@ tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 
 rusqlite = { version = "0.32", features = ["bundled-sqlcipher", "bundled-sqlcipher-vendored-openssl"], default-features = false }
+tauri-plugin-single-instance = "2"
 

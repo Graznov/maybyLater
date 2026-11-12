@@ -505,6 +505,32 @@ fn verify_sqlite_restore(payload: BackupPayload) -> Result<String, String> {
 pub fn run() {
 
     tauri::Builder::default()
+        // Должен быть зарегистрирован первым: повторный запуск активирует
+        // уже открытое окно вместо создания второго экземпляра приложения.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            eprintln!("SINGLE INSTANCE: callback вызван");
+
+            match app.get_webview_window("main") {
+                Some(window) => {
+                    eprintln!("SINGLE INSTANCE: окно main найдено");
+
+                    if let Err(error) = window.unminimize() {
+                        eprintln!("SINGLE INSTANCE: unminimize: {error}");
+                    }
+
+                    if let Err(error) = window.show() {
+                        eprintln!("SINGLE INSTANCE: show: {error}");
+                    }
+
+                    if let Err(error) = window.set_focus() {
+                        eprintln!("SINGLE INSTANCE: set_focus: {error}");
+                    }
+                }
+                None => {
+                    eprintln!("SINGLE INSTANCE: окно main не найдено");
+                }
+            }
+        }))
         .manage(std::sync::Arc::new(secure_session::SecureSession::new()))
         .plugin(tauri_plugin_dialog::init())
     .plugin(tauri_plugin_fs::init())
