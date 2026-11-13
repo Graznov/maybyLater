@@ -1,7 +1,7 @@
 
 [package]
 name = "maybe-later-journal"
-version = "0.10.4"
+version = "0.11.0"
 default-run = "maybe-later-journal"
 description = "Maybe Later journal"
 authors = ["you"]

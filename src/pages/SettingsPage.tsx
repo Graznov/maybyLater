@@ -1,5 +1,5 @@
 import { ChangeEvent, useEffect, useRef, useState } from 'react';
-import { Database, Download, Languages, Monitor, Palette, RotateCcw, Settings2, Trash2, Upload } from 'lucide-react';
+import { Database, Download, KeyRound, Languages, Monitor, Palette, RotateCcw, Settings2, Trash2, Upload } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../app/hooks';
 import { setJournalName, setPreference, type PreferencesState } from '../features/preferences/preferencesSlice';
 import { Modal } from '../components/Modal/Modal';
@@ -34,6 +34,12 @@ export function SettingsPage() {
   const [snapshotCheck, setSnapshotCheck] = useState('');
   const [confirmRealRestore, setConfirmRealRestore] = useState(false);
   const [securePassword, setSecurePassword] = useState('');
+  const [passwordDialog, setPasswordDialog] = useState(false);
+  const [oldPassword, setOldPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordNotice, setPasswordNotice] = useState('');
   const [restoreNotice] = useState(() => { const notice = sessionStorage.getItem('maybeLater.restoreNotice'); if (notice) sessionStorage.removeItem('maybeLater.restoreNotice'); return notice; });
 
   const set = <K extends keyof PreferencesState>(key: K, value: PreferencesState[K]) => {
@@ -127,6 +133,57 @@ export function SettingsPage() {
     finally { setBusy(false); }
   };
 
+  const closePasswordDialog = () => {
+    if (busy) return;
+    setPasswordDialog(false);
+    setOldPassword(''); setNewPassword(''); setConfirmPassword(''); setPasswordError('');
+  };
+
+  const changePassword = async () => {
+    if (busy || !isTauri()) return;
+    if (!oldPassword || !newPassword || newPassword !== confirmPassword || oldPassword === newPassword) {
+      setPasswordError(english ? 'Enter the current password and two matching, different new passwords.' : 'Введите текущий пароль и два одинаковых новых пароля, отличающихся от старого.');
+      return;
+    }
+    setBusy(true); setPasswordError(''); setPasswordNotice('');
+    try {
+      // Block new writes and wait for autosave before the Rust session is closed.
+      beginSqliteReset();
+      await waitForSqliteEntryWrites();
+      await waitForSqliteTagWrites();
+      await waitForSqlitePreferencesWrites();
+      await waitForSqliteCalendarWrites();
+      await invoke('change_secure_database_password', { oldPassword, newPassword });
+    } catch (error) {
+      cancelSqliteReset();
+      setPasswordError(String(error));
+      setOldPassword(''); setNewPassword(''); setConfirmPassword('');
+      setBusy(false);
+      return;
+    }
+
+    // Password change succeeded. Lock the Rust session before showing UnlockScreen:
+    // an already-unlocked session bypasses password verification in UnlockScreen.
+    try {
+      await invoke('lock_secure_database');
+    } catch (error) {
+      // Do not reload into a misleading unlock screen. The password has already
+      // changed, so never present this as a failed password-change operation.
+      cancelSqliteReset();
+      setPasswordDialog(false);
+      setPasswordNotice(english
+        ? `Password changed, but the journal could not be locked automatically: ${String(error)}. Lock the journal manually before leaving it unattended.`
+        : `Пароль изменён, но автоматически заблокировать дневник не удалось: ${String(error)}. Заблокируйте дневник вручную, прежде чем оставлять его без присмотра.`);
+      setOldPassword(''); setNewPassword(''); setConfirmPassword('');
+      setBusy(false);
+      return;
+    }
+
+    setOldPassword(''); setNewPassword(''); setConfirmPassword('');
+    // The backend is locked; a reload now requires a real password check.
+    window.location.reload();
+  };
+
   const resetAll = async () => {
     if (busy || (isTauri() && !securePassword)) return;
     setBusy(true);
@@ -207,6 +264,11 @@ export function SettingsPage() {
           {backupError && <p role="alert" style={{color:'#ff9999',overflowWrap:'anywhere'}}>{backupError}</p>}
         </SettingsSection>
 
+        {isTauri() && <SettingsSection icon={<KeyRound />} title={english ? 'Security' : 'Безопасность'} description={english ? 'Protect your encrypted journal.' : 'Защита зашифрованного дневника.'}>
+          <button className="settings-action" disabled={busy} onClick={() => { setPasswordError(''); setPasswordDialog(true); }}><KeyRound size={18} />{english ? 'Change journal password' : 'Изменить пароль дневника'}</button>
+          {passwordNotice && <p role="status">{passwordNotice}</p>}
+        </SettingsSection>}
+
         <SettingsSection danger icon={<Trash2 />} title={english ? 'Danger zone' : 'Опасная зона'} description={english ? 'These actions cannot be undone.' : 'Эти действия нельзя отменить.'}>
           <button className="settings-danger" disabled={busy} onClick={() => setConfirmReset(true)}><RotateCcw size={18} />{english ? 'Delete all application data' : 'Удалить все данные приложения'}</button>
         </SettingsSection>
@@ -215,6 +277,13 @@ export function SettingsPage() {
       <div className="settings-about"><strong>Maybe Later</strong><span>{english ? 'Version' : 'Версия'} {appVersion}</span><small>{english ? 'Your journal is stored locally on this device.' : 'Ваш дневник хранится локально на этом устройстве.'}</small></div>
 
       </div>
+      <Modal open={passwordDialog} title={english ? 'Change journal password' : 'Изменить пароль дневника'} onClose={closePasswordDialog} footer={<><button className="modal__button" disabled={busy} onClick={closePasswordDialog}>{english ? 'Cancel' : 'Отмена'}</button><button className="modal__button" disabled={busy || !oldPassword || !newPassword || !confirmPassword} onClick={changePassword}>{busy ? '...' : (english ? 'Change password' : 'Изменить пароль')}</button></>}>
+        <p>{english ? 'The journal will be re-encrypted. The previous encrypted database is retained as a backup protected by the old password.' : 'Дневник будет перешифрован. Предыдущая зашифрованная база останется резервной копией, защищённой старым паролем.'}</p>
+        <label>{english ? 'Current password' : 'Текущий пароль'}<input className="settings-input" type="password" autoComplete="current-password" value={oldPassword} disabled={busy} onChange={e => setOldPassword(e.target.value)} /></label>
+        <label>{english ? 'New password' : 'Новый пароль'}<input className="settings-input" type="password" autoComplete="new-password" value={newPassword} disabled={busy} onChange={e => setNewPassword(e.target.value)} /></label>
+        <label>{english ? 'Repeat new password' : 'Повторите новый пароль'}<input className="settings-input" type="password" autoComplete="new-password" value={confirmPassword} disabled={busy} onChange={e => setConfirmPassword(e.target.value)} /></label>
+        {passwordError && <p role="alert" style={{overflowWrap:'anywhere'}}>{passwordError}</p>}
+      </Modal>
       <Modal open={!!pendingImport} title={english ? 'Restore backup?' : 'Восстановить резервную копию?'} onClose={() => !busy && (setPendingImport(null), setConfirmRealRestore(false), setSecurePassword(""))} footer={<><button className="modal__button" disabled={busy} onClick={() => { setPendingImport(null); setConfirmRealRestore(false); setSecurePassword(""); }}>{english ? 'Cancel' : 'Отмена'}</button><button className="modal__button" disabled={busy || !isTauri()} onClick={verifyImport}>{busy ? '...' : (english ? 'Check' : 'Проверить')}</button><button className="modal__button modal__button--danger" disabled={busy || !restoreCheck || !diskCheck || !snapshotCheck || !isTauri()} onClick={() => setConfirmRealRestore(true)}>{english ? 'Restore…' : 'Восстановить…'}</button></>}>
         <p>{english ? 'First verify in memory, then test on a disk copy and verify a safety snapshot. Real restore REPLACES all current entries, tags and preferences and calendar colors (when included). A separate SQLite snapshot is saved before replacement.' : 'Сначала проверьте копию в памяти, затем выполните тест на дисковой копии и проверку защитного снимка. Настоящее восстановление ЗАМЕНИТ все текущие записи, теги и настройки и цвета календаря (если они есть в JSON). Перед заменой будет сохранена отдельная копия SQLite.'}</p>
         <p>{pendingImport?.entries.length ?? 0} {english ? 'entries' : 'записей'}, {pendingImport?.tags.length ?? 0} {english ? 'tags' : 'тегов'}, {pendingImport?.calendarColors ? Object.keys(pendingImport.calendarColors).length : (english ? 'unchanged' : 'без изменений')} {english ? 'calendar colors' : 'цветов календаря'}.</p>{restoreCheck && <p role="status" style={{overflowWrap:'anywhere'}}>{restoreCheck}</p>}

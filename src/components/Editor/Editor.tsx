@@ -269,7 +269,7 @@ export function Editor() {
         </div>
       )}
 
-      {preferences.showToolbar && <EditorToolbar editor={tiptap} />}
+      {preferences.showToolbar && <EditorToolbar editor={tiptap} language={preferences.language} />}
 
       <Modal open={infoOpen} title="Информация о записи" onClose={() => setInfoOpen(false)} footer={<button type="button" className="modal__button" onClick={() => setInfoOpen(false)}>Закрыть</button>}>
         <div className="editor__info"><p><span>Создано</span><strong>{formatDateTime(createdAt)}</strong></p><p><span>Последнее изменение</span><strong>{formatDateTime(updatedAt)}</strong></p><p><span>Символов</span><strong>{tiptap?.getText().length ?? 0}</strong></p><p><span>Тегов</span><strong>{entry.tags.length}</strong></p></div>

@@ -17,13 +17,17 @@ import {
   Quote,
   Redo2,
   Strikethrough,
+  Smile,
   Underline,
   Undo2,
 } from 'lucide-react';
 import { Modal } from '../Modal/Modal';
+import { EMOJI_CATEGORIES, type EmojiItem } from './emojiCatalog';
+import './EmojiPicker.css';
 
 type Props = {
   editor: Editor | null;
+  language: 'ru' | 'en';
 };
 
 type ToolbarButtonProps = {
@@ -59,9 +63,15 @@ function ToolbarButton({
   );
 }
 
-export function EditorToolbar({ editor }: Props) {
+export function EditorToolbar({ editor, language }: Props) {
+  const english = language === 'en';
   const [linkOpen, setLinkOpen] = useState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [emojiSelection, setEmojiSelection] = useState<{ from: number; to: number } | null>(null);
   const [url, setUrl] = useState('https://');
+  const [emojiCategory, setEmojiCategory] = useState('faces');
+  const [emojiSearch, setEmojiSearch] = useState('');
+  const [recentEmojis, setRecentEmojis] = useState<EmojiItem[]>([]);
   const imageInputId = 'editor-image-upload';
   const [, forceRender] = useState(0);
 
@@ -84,6 +94,32 @@ export function EditorToolbar({ editor }: Props) {
   if (!editor) {
     return <div className="editor-toolbar" />;
   }
+
+  const openEmojiPicker = () => {
+    const { from, to } = editor.state.selection;
+    setEmojiSelection({ from, to });
+    setEmojiSearch('');
+    setEmojiOpen(true);
+  };
+
+  const insertEmoji = (item: EmojiItem) => {
+    if (!emojiSelection) return;
+    const maxPosition = editor.state.doc.content.size;
+    const from = Math.min(emojiSelection.from, maxPosition);
+    const to = Math.min(emojiSelection.to, maxPosition);
+    editor.chain().focus().insertContentAt({ from, to }, item.emoji).run();
+    setRecentEmojis((previous) => [item, ...previous.filter((value) => value.emoji !== item.emoji)].slice(0, 24));
+    setEmojiOpen(false);
+    setEmojiSelection(null);
+  };
+
+  const normalizedSearch = emojiSearch.trim().toLocaleLowerCase();
+  const selectedEmojis = normalizedSearch
+    ? EMOJI_CATEGORIES.flatMap((category) => category.items).filter((item) =>
+        `${item.en} ${item.ru} ${item.emoji}`.toLocaleLowerCase().includes(normalizedSearch))
+    : emojiCategory === 'recent'
+      ? recentEmojis
+      : EMOJI_CATEGORIES.find((category) => category.id === emojiCategory)?.items ?? [];
 
   const openLink = () => {
     const currentUrl = editor.getAttributes('link').href as string | undefined;
@@ -293,6 +329,14 @@ export function EditorToolbar({ editor }: Props) {
           </label>
 
           <ToolbarButton
+            title={english ? 'Insert emoji' : 'Вставить эмодзи'}
+            active={emojiOpen}
+            onClick={openEmojiPicker}
+          >
+            <Smile />
+          </ToolbarButton>
+
+          <ToolbarButton
             title="Ссылка"
             active={editor.isActive('link')}
             onClick={openLink}
@@ -325,6 +369,61 @@ export function EditorToolbar({ editor }: Props) {
           </ToolbarButton>
         </div>
       </div>
+
+      <Modal
+        open={emojiOpen}
+        title={english ? 'Choose emoji' : 'Выбрать эмодзи'}
+        onClose={() => {
+          setEmojiOpen(false);
+          setEmojiSelection(null);
+        }}
+      >
+        <div className="emoji-picker">
+          <input
+            className="emoji-picker__search"
+            type="search"
+            value={emojiSearch}
+            autoFocus
+            onChange={(event) => setEmojiSearch(event.target.value)}
+            placeholder={english ? 'Search emoji…' : 'Поиск эмодзи…'}
+            aria-label={english ? 'Search emoji' : 'Поиск эмодзи'}
+          />
+          <div className="emoji-picker__categories" role="group" aria-label={english ? 'Emoji categories' : 'Категории эмодзи'}>
+            <button type="button" className={emojiCategory === 'recent' ? 'is-active' : ''}
+              onClick={() => { setEmojiCategory('recent'); setEmojiSearch(''); }}
+              title={english ? 'Recently used' : 'Недавно использованные'}
+              aria-label={english ? 'Recently used' : 'Недавно использованные'}>🕘</button>
+            {EMOJI_CATEGORIES.map((category) => (
+              <button key={category.id} type="button"
+                className={emojiCategory === category.id ? 'is-active' : ''}
+                onClick={() => { setEmojiCategory(category.id); setEmojiSearch(''); }}
+                title={english ? category.en : category.ru}
+                aria-label={english ? category.en : category.ru}
+                aria-pressed={emojiCategory === category.id}>{category.icon}</button>
+            ))}
+          </div>
+          <div className="emoji-picker__label">
+            {normalizedSearch
+              ? (english ? 'Search results' : 'Результаты поиска')
+              : emojiCategory === 'recent'
+                ? (english ? 'Recently used' : 'Недавно использованные')
+                : (() => { const category = EMOJI_CATEGORIES.find((item) => item.id === emojiCategory);
+                    return category ? (english ? category.en : category.ru) : ''; })()}
+          </div>
+          <div className="emoji-picker__grid" role="group" aria-label={english ? 'Available emoji' : 'Доступные эмодзи'}>
+            {selectedEmojis.map((item) => (
+              <button key={item.emoji} type="button" title={english ? item.en : item.ru}
+                aria-label={`${english ? 'Insert' : 'Вставить'} ${english ? item.en : item.ru}`}
+                onClick={() => insertEmoji(item)}>{item.emoji}</button>
+            ))}
+            {!selectedEmojis.length && (
+              <p className="emoji-picker__empty">{normalizedSearch
+                ? (english ? 'No emoji found' : 'Эмодзи не найдены')
+                : (english ? 'No recently used emoji yet' : 'Пока нет недавно использованных эмодзи')}</p>
+            )}
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         open={linkOpen}

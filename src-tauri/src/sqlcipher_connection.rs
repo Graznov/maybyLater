@@ -14,15 +14,9 @@ pub fn has_plaintext_sqlite_header(path: &Path) -> Result<bool, String> {
 
 /// Открывает существующую SQLCipher-базу для чтения и записи.
 /// Возвращает соединение лишь после проверки пароля и целостности.
-pub fn open_verified_database(
-    path: &Path,
-    password: &str,
-) -> Result<Connection, String> {
-    let conn = Connection::open_with_flags(
-        path,
-        OpenFlags::SQLITE_OPEN_READ_WRITE,
-    )
-    .map_err(|e| e.to_string())?;
+pub fn open_verified_database(path: &Path, password: &str) -> Result<Connection, String> {
+    let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_WRITE)
+        .map_err(|e| e.to_string())?;
 
     conn.pragma_update(None, "key", password)
         .map_err(|e| e.to_string())?;
@@ -36,7 +30,8 @@ pub fn open_verified_database(
     }
 
     {
-        let mut stmt = conn.prepare("PRAGMA cipher_integrity_check")
+        let mut stmt = conn
+            .prepare("PRAGMA cipher_integrity_check")
             .map_err(|e| e.to_string())?;
         let mut rows = stmt.query([]).map_err(|e| e.to_string())?;
 
@@ -50,90 +45,144 @@ pub fn open_verified_database(
 }
 
 fn list_user_tables(conn: &Connection) -> Result<Vec<String>, String> {
-    let mut stmt = conn.prepare("SELECT name FROM sqlite_master WHERE type = ?1 AND name NOT LIKE ?2 ORDER BY name")
+    let mut stmt = conn
+        .prepare(
+            "SELECT name FROM sqlite_master WHERE type = ?1 AND name NOT LIKE ?2 ORDER BY name",
+        )
         .map_err(|e| e.to_string())?;
-    let rows = stmt.query_map(["table", "sqlite_%"], |row| row.get::<_, String>(0))
+    let rows = stmt
+        .query_map(["table", "sqlite_%"], |row| row.get::<_, String>(0))
         .map_err(|e| e.to_string())?;
-    rows.collect::<rusqlite::Result<Vec<_>>>().map_err(|e| e.to_string())
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(|e| e.to_string())
 }
 
-fn read_table_rows(conn: &Connection, table: &str) -> Result<Vec<Vec<rusqlite::types::Value>>, String> {
+fn read_table_rows(
+    conn: &Connection,
+    table: &str,
+) -> Result<Vec<Vec<rusqlite::types::Value>>, String> {
     let quoted = format!("\"{}\"", table.replace("\"", "\"\""));
-    let mut stmt = conn.prepare(&format!("SELECT * FROM {quoted}"))
+    let mut stmt = conn
+        .prepare(&format!("SELECT * FROM {quoted}"))
         .map_err(|e| format!("Не удалось прочитать таблицу {table}: {e}"))?;
     let count = stmt.column_count();
-    let rows = stmt.query_map([], |row| {
-        (0..count).map(|i| row.get::<_, rusqlite::types::Value>(i))
-            .collect::<rusqlite::Result<Vec<_>>>()
-    }).map_err(|e| e.to_string())?;
-    rows.collect::<rusqlite::Result<Vec<_>>>().map_err(|e| e.to_string())
+    let rows = stmt
+        .query_map([], |row| {
+            (0..count)
+                .map(|i| row.get::<_, rusqlite::types::Value>(i))
+                .collect::<rusqlite::Result<Vec<_>>>()
+        })
+        .map_err(|e| e.to_string())?;
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(|e| e.to_string())
 }
 
-fn read_schema_objects(conn: &Connection) -> Result<Vec<(String, String, String, Option<String>)>, String> {
+fn read_schema_objects(
+    conn: &Connection,
+) -> Result<Vec<(String, String, String, Option<String>)>, String> {
     let mut stmt = conn.prepare("SELECT type, name, tbl_name, sql FROM sqlite_master WHERE name NOT LIKE ?1 ORDER BY type, name")
         .map_err(|e| e.to_string())?;
-    let rows = stmt.query_map(["sqlite_%"], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)))
+    let rows = stmt
+        .query_map(["sqlite_%"], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+        })
         .map_err(|e| e.to_string())?;
-    rows.collect::<rusqlite::Result<Vec<_>>>().map_err(|e| e.to_string())
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(|e| e.to_string())
 }
 
 /// Экспортирует незашифрованную SQLite-базу в отдельный SQLCipher-файл.
 /// Не изменяет исходную базу и не перезаписывает целевой файл.
-pub fn export_plaintext_to_encrypted(source_path: &Path, destination_path: &Path, password: &str) -> Result<(), String> {
+pub fn export_plaintext_to_encrypted(
+    source_path: &Path,
+    destination_path: &Path,
+    password: &str,
+) -> Result<(), String> {
     if password.is_empty() {
         return Err("Пароль не может быть пустым".into());
     }
     if !has_plaintext_sqlite_header(source_path)? {
         return Err("Исходный файл не является незашифрованной SQLite-базой".into());
     }
-    let parent = destination_path.parent().ok_or("Не найден каталог назначения")?;
-    let filename = destination_path.file_name().ok_or("Не найдено имя целевого файла")?.to_string_lossy();
+    let parent = destination_path
+        .parent()
+        .ok_or("Не найден каталог назначения")?;
+    let filename = destination_path
+        .file_name()
+        .ok_or("Не найдено имя целевого файла")?
+        .to_string_lossy();
     let unique = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH).map_err(|e| e.to_string())?.as_nanos();
-    let temporary = parent.join(format!(".{filename}.exporting-{}-{unique}", std::process::id()));
-    let snapshot = parent.join(format!(".{filename}.snapshot-{}-{unique}", std::process::id()));
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_nanos();
+    let temporary = parent.join(format!(
+        ".{filename}.exporting-{}-{unique}",
+        std::process::id()
+    ));
+    let snapshot = parent.join(format!(
+        ".{filename}.snapshot-{}-{unique}",
+        std::process::id()
+    ));
     let mut temporary_owned = false;
     let mut snapshot_owned = false;
     let result = (|| -> Result<(), String> {
         let original = Connection::open_with_flags(source_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
             .map_err(|e| format!("Не удалось открыть исходную базу для чтения: {e}"))?;
-        let reservation = std::fs::OpenOptions::new().write(true).create_new(true).open(&snapshot)
+        let reservation = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&snapshot)
             .map_err(|e| format!("Не удалось зарезервировать путь снимка: {e}"))?;
         snapshot_owned = true;
         drop(reservation);
-        original.execute("VACUUM INTO ?1", [snapshot.to_string_lossy().as_ref()])
+        original
+            .execute("VACUUM INTO ?1", [snapshot.to_string_lossy().as_ref()])
             .map_err(|e| format!("Не удалось создать снимок SQLite: {e}"))?;
         drop(original);
         let source = Connection::open_with_flags(&snapshot, OpenFlags::SQLITE_OPEN_READ_WRITE)
             .map_err(|e| format!("Не удалось открыть временный снимок: {e}"))?;
-        let snapshot_integrity: String = source.query_row("PRAGMA integrity_check", [], |row| row.get(0))
+        let snapshot_integrity: String = source
+            .query_row("PRAGMA integrity_check", [], |row| row.get(0))
             .map_err(|e| format!("Не удалось проверить снимок SQLite: {e}"))?;
         if snapshot_integrity != "ok" {
-            return Err(format!("Нарушена целостность снимка SQLite: {snapshot_integrity}"));
+            return Err(format!(
+                "Нарушена целостность снимка SQLite: {snapshot_integrity}"
+            ));
         }
-        let new_file = std::fs::OpenOptions::new().write(true).create_new(true).open(&temporary)
+        let new_file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)
             .map_err(|e| format!("Не удалось создать временный файл: {e}"))?;
         temporary_owned = true;
         drop(new_file);
-        source.execute("ATTACH DATABASE ?1 AS encrypted KEY ?2",
-            rusqlite::params![temporary.to_string_lossy().as_ref(), password])
+        source
+            .execute(
+                "ATTACH DATABASE ?1 AS encrypted KEY ?2",
+                rusqlite::params![temporary.to_string_lossy().as_ref(), password],
+            )
             .map_err(|e| format!("Не удалось подключить SQLCipher-файл: {e}"))?;
-        let export_result = source.query_row("SELECT sqlcipher_export('encrypted')", [], |_| Ok(()))
+        let export_result = source
+            .query_row("SELECT sqlcipher_export('encrypted')", [], |_| Ok(()))
             .map_err(|e| format!("Ошибка экспорта в SQLCipher: {e}"));
         export_result?;
         for pragma in ["user_version", "application_id"] {
-            let value: i64 = source.query_row(&format!("PRAGMA {pragma}"), [], |row| row.get(0))
+            let value: i64 = source
+                .query_row(&format!("PRAGMA {pragma}"), [], |row| row.get(0))
                 .map_err(|e| format!("Не удалось прочитать {pragma}: {e}"))?;
-            source.execute_batch(&format!("PRAGMA encrypted.{pragma} = {value}"))
+            source
+                .execute_batch(&format!("PRAGMA encrypted.{pragma} = {value}"))
                 .map_err(|e| format!("Не удалось перенести {pragma}: {e}"))?;
         }
 
-        source.execute_batch("DETACH DATABASE encrypted")
+        source
+            .execute_batch("DETACH DATABASE encrypted")
             .map_err(|e| format!("Не удалось отключить SQLCipher-файл: {e}"))?;
 
         drop(source);
-        let source_for_verification = Connection::open_with_flags(&snapshot, OpenFlags::SQLITE_OPEN_READ_ONLY)
-            .map_err(|e| format!("Не удалось открыть снимок для проверки: {e}"))?;
+        let source_for_verification =
+            Connection::open_with_flags(&snapshot, OpenFlags::SQLITE_OPEN_READ_ONLY)
+                .map_err(|e| format!("Не удалось открыть снимок для проверки: {e}"))?;
         let verified = open_verified_database(&temporary, password)?;
         let snapshot_tables = list_user_tables(&source_for_verification)?;
         let encrypted_tables = list_user_tables(&verified)?;
@@ -147,15 +196,28 @@ pub fn export_plaintext_to_encrypted(source_path: &Path, destination_path: &Path
         }
         for pragma in ["user_version", "application_id"] {
             let sql = format!("PRAGMA {pragma}");
-            let original: i64 = source_for_verification.query_row(&sql, [], |row| row.get(0)).map_err(|e| e.to_string())?;
-            let encrypted: i64 = verified.query_row(&sql, [], |row| row.get(0)).map_err(|e| e.to_string())?;
+            let original: i64 = source_for_verification
+                .query_row(&sql, [], |row| row.get(0))
+                .map_err(|e| e.to_string())?;
+            let encrypted: i64 = verified
+                .query_row(&sql, [], |row| row.get(0))
+                .map_err(|e| e.to_string())?;
             if original != encrypted {
-                return Err(format!("Метаданные {pragma} не совпадают: SQLite={original}, SQLCipher={encrypted}"));
+                return Err(format!(
+                    "Метаданные {pragma} не совпадают: SQLite={original}, SQLCipher={encrypted}"
+                ));
             }
         }
-        let sequence_exists: i64 = source_for_verification.query_row("SELECT COUNT(*) FROM sqlite_master WHERE type = ?1 AND name = ?2", ["table", "sqlite_sequence"], |row| row.get(0)).map_err(|e| e.to_string())?;
+        let sequence_exists: i64 = source_for_verification
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = ?1 AND name = ?2",
+                ["table", "sqlite_sequence"],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
         if sequence_exists != 0 {
-            let mut original_sequence = read_table_rows(&source_for_verification, "sqlite_sequence")?;
+            let mut original_sequence =
+                read_table_rows(&source_for_verification, "sqlite_sequence")?;
             let mut encrypted_sequence = read_table_rows(&verified, "sqlite_sequence")?;
             original_sequence.sort_by(|a, b| format!("{a:?}").cmp(&format!("{b:?}")));
             encrypted_sequence.sort_by(|a, b| format!("{a:?}").cmp(&format!("{b:?}")));
@@ -169,7 +231,9 @@ pub fn export_plaintext_to_encrypted(source_path: &Path, destination_path: &Path
             original_rows.sort_by(|a, b| format!("{a:?}").cmp(&format!("{b:?}")));
             encrypted_rows.sort_by(|a, b| format!("{a:?}").cmp(&format!("{b:?}")));
             if original_rows != encrypted_rows {
-                return Err(format!("Данные таблицы {table} не совпадают после экспорта"));
+                return Err(format!(
+                    "Данные таблицы {table} не совпадают после экспорта"
+                ));
             }
         }
         drop(source_for_verification);
@@ -179,13 +243,25 @@ pub fn export_plaintext_to_encrypted(source_path: &Path, destination_path: &Path
         Ok(())
     })();
     let cleanup = if temporary_owned {
-        std::fs::remove_file(&temporary).map_err(|e| format!("Не удалось удалить временный файл {}: {e}", temporary.display()))
+        std::fs::remove_file(&temporary).map_err(|e| {
+            format!(
+                "Не удалось удалить временный файл {}: {e}",
+                temporary.display()
+            )
+        })
     } else {
         Ok(())
     };
     let snapshot_cleanup = if snapshot_owned && snapshot.exists() {
-        std::fs::remove_file(&snapshot).map_err(|e| format!("Не удалось удалить временный снимок {}: {e}", snapshot.display()))
-    } else { Ok(()) };
+        std::fs::remove_file(&snapshot).map_err(|e| {
+            format!(
+                "Не удалось удалить временный снимок {}: {e}",
+                snapshot.display()
+            )
+        })
+    } else {
+        Ok(())
+    };
     let cleanup = match (cleanup, snapshot_cleanup) {
         (Ok(()), Ok(())) => Ok(()),
         (Err(e), Ok(())) | (Ok(()), Err(e)) => Err(e),
@@ -196,6 +272,192 @@ pub fn export_plaintext_to_encrypted(source_path: &Path, destination_path: &Path
         (Err(error), Ok(())) => Err(error),
         (Err(error), Err(cleanup_error)) => Err(format!("{error}; {cleanup_error}")),
         (Ok(()), Err(cleanup_error)) => Err(format!("База опубликована, но {cleanup_error}")),
+    }
+}
+
+/// Создаёт отдельную SQLCipher-копию базы с новым паролем.
+///
+/// Исходная база не изменяется. Целевой путь публикуется только после
+/// экспорта и полной проверки; существующий целевой файл не перезаписывается.
+pub fn change_encrypted_database_password(
+    source_path: &Path,
+    destination_path: &Path,
+    old_password: &str,
+    new_password: &str,
+) -> Result<(), String> {
+    if old_password.is_empty() {
+        return Err("Текущий пароль не может быть пустым".into());
+    }
+    if new_password.is_empty() {
+        return Err("Новый пароль не может быть пустым".into());
+    }
+    if source_path == destination_path {
+        return Err("Исходный и целевой файлы должны отличаться".into());
+    }
+
+    let parent = destination_path
+        .parent()
+        .ok_or("Не найден каталог назначения")?;
+    let filename = destination_path
+        .file_name()
+        .ok_or("Не найдено имя целевого файла")?
+        .to_string_lossy();
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_nanos();
+    let temporary = parent.join(format!(
+        ".{filename}.password-change-{}-{unique}",
+        std::process::id()
+    ));
+
+    let mut temporary_owned = false;
+    let result = (|| -> Result<(), String> {
+        // Проверяем старый пароль и целостность до создания целевого файла.
+        let source = open_verified_database(source_path, old_password)?;
+
+        // Перед экспортом фиксируем WAL, чтобы снимок содержал
+        // все подтверждённые транзакции исходной базы.
+        let (busy, log_frames, checkpointed): (i64, i64, i64) = source
+            .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })
+            .map_err(|e| format!("Не удалось выполнить WAL checkpoint: {e}"))?;
+
+        if busy != 0 {
+            return Err(format!(
+        "Смена пароля отменена: WAL checkpoint занят (busy={busy}, frames={log_frames}, checkpointed={checkpointed})"
+    ));
+        }
+
+        let user_version: i64 = source
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .map_err(|e| format!("Не удалось прочитать user_version: {e}"))?;
+        let application_id: i64 = source
+            .query_row("PRAGMA application_id", [], |row| row.get(0))
+            .map_err(|e| format!("Не удалось прочитать application_id: {e}"))?;
+
+        let reserved = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)
+            .map_err(|e| format!("Не удалось создать временный файл: {e}"))?;
+        temporary_owned = true;
+        drop(reserved);
+
+        source
+            .execute(
+                "ATTACH DATABASE ?1 AS encrypted KEY ?2",
+                rusqlite::params![temporary.to_string_lossy().as_ref(), new_password],
+            )
+            .map_err(|e| format!("Не удалось подключить новую SQLCipher-базу: {e}"))?;
+
+        let export_result = source
+            .query_row("SELECT sqlcipher_export('encrypted')", [], |_| Ok(()))
+            .map_err(|e| format!("Не удалось экспортировать базу с новым паролем: {e}"));
+
+        if let Err(error) = export_result {
+            let _ = source.execute_batch("DETACH DATABASE encrypted");
+            return Err(error);
+        }
+
+        source
+            .execute_batch(&format!(
+                "PRAGMA encrypted.user_version = {user_version}; \
+                 PRAGMA encrypted.application_id = {application_id};"
+            ))
+            .map_err(|e| format!("Не удалось перенести метаданные базы: {e}"))?;
+
+        source
+            .execute_batch("DETACH DATABASE encrypted")
+            .map_err(|e| format!("Не удалось отключить новую SQLCipher-базу: {e}"))?;
+
+        // Сверяем экспорт с исходной базой до публикации.
+        let verified = open_verified_database(&temporary, new_password)?;
+
+        let source_tables = list_user_tables(&source)?;
+        let encrypted_tables = list_user_tables(&verified)?;
+        if source_tables != encrypted_tables {
+            return Err(format!(
+                "Список таблиц после смены пароля не совпадает: исходная={source_tables:?}, новая={encrypted_tables:?}"
+            ));
+        }
+
+        let source_schema = read_schema_objects(&source)?;
+        let encrypted_schema = read_schema_objects(&verified)?;
+        if source_schema != encrypted_schema {
+            return Err("Структура базы не совпадает после смены пароля".into());
+        }
+
+        for (name, expected) in [
+            ("user_version", user_version),
+            ("application_id", application_id),
+        ] {
+            let actual: i64 = verified
+                .query_row(&format!("PRAGMA {name}"), [], |row| row.get(0))
+                .map_err(|e| format!("Не удалось проверить {name}: {e}"))?;
+            if actual != expected {
+                return Err(format!(
+                    "Метаданные {name} не совпадают: исходная={expected}, новая={actual}"
+                ));
+            }
+        }
+
+        let sequence_exists: i64 = source
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = ?1 AND name = ?2",
+                ["table", "sqlite_sequence"],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        if sequence_exists != 0 {
+            let mut source_sequence = read_table_rows(&source, "sqlite_sequence")?;
+            let mut encrypted_sequence = read_table_rows(&verified, "sqlite_sequence")?;
+            source_sequence.sort_by(|a, b| format!("{a:?}").cmp(&format!("{b:?}")));
+            encrypted_sequence.sort_by(|a, b| format!("{a:?}").cmp(&format!("{b:?}")));
+            if source_sequence != encrypted_sequence {
+                return Err("Счётчики AUTOINCREMENT не совпадают после смены пароля".into());
+            }
+        }
+
+        for table in &source_tables {
+            let mut source_rows = read_table_rows(&source, table)?;
+            let mut encrypted_rows = read_table_rows(&verified, table)?;
+            source_rows.sort_by(|a, b| format!("{a:?}").cmp(&format!("{b:?}")));
+            encrypted_rows.sort_by(|a, b| format!("{a:?}").cmp(&format!("{b:?}")));
+            if source_rows != encrypted_rows {
+                return Err(format!(
+                    "Данные таблицы {table} не совпадают после смены пароля"
+                ));
+            }
+        }
+
+        drop(verified);
+        drop(source);
+
+        // hard_link атомарно резервирует целевой путь и не перезаписывает его.
+        std::fs::hard_link(&temporary, destination_path)
+            .map_err(|e| format!("Не удалось опубликовать новую базу без перезаписи: {e}"))?;
+
+        Ok(())
+    })();
+
+    let cleanup = if temporary_owned && temporary.exists() {
+        std::fs::remove_file(&temporary).map_err(|e| {
+            format!(
+                "Не удалось удалить временный файл {}: {e}",
+                temporary.display()
+            )
+        })
+    } else {
+        Ok(())
+    };
+
+    match (result, cleanup) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(error), Ok(())) => Err(error),
+        (Err(error), Err(cleanup_error)) => Err(format!("{error}; {cleanup_error}")),
+        (Ok(()), Err(cleanup_error)) => Err(format!("Новая база опубликована, но {cleanup_error}")),
     }
 }
 
@@ -215,11 +477,8 @@ pub fn create_encrypted_database(path: &Path, password: &str) -> Result<Connecti
 }
 
 fn initialize_existing_empty_database(path: &Path, password: &str) -> Result<Connection, String> {
-    let mut conn = Connection::open_with_flags(
-        path,
-        OpenFlags::SQLITE_OPEN_READ_WRITE,
-    )
-    .map_err(|e| format!("Не удалось создать новую базу: {e}"))?;
+    let mut conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_WRITE)
+        .map_err(|e| format!("Не удалось создать новую базу: {e}"))?;
 
     conn.pragma_update(None, "key", password)
         .map_err(|e| e.to_string())?;
@@ -242,12 +501,18 @@ pub fn initialize_encrypted_database(path: &Path, password: &str) -> Result<(), 
     }
 
     let parent = path.parent().ok_or("Не найден каталог базы данных")?;
-    let filename = path.file_name().ok_or("Не найдено имя базы данных")?.to_string_lossy();
+    let filename = path
+        .file_name()
+        .ok_or("Не найдено имя базы данных")?
+        .to_string_lossy();
     let unique = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|e| e.to_string())?
         .as_nanos();
-    let temporary = parent.join(format!(".{filename}.initializing-{}-{unique}", std::process::id()));
+    let temporary = parent.join(format!(
+        ".{filename}.initializing-{}-{unique}",
+        std::process::id()
+    ));
 
     let mut temporary_owned = false;
     let result = (|| -> Result<(), String> {
@@ -269,7 +534,10 @@ pub fn initialize_encrypted_database(path: &Path, password: &str) -> Result<(), 
 
     let cleanup = if temporary_owned && temporary.exists() {
         std::fs::remove_file(&temporary).map_err(|e| {
-            format!("Не удалось удалить временный файл {}: {e}", temporary.display())
+            format!(
+                "Не удалось удалить временный файл {}: {e}",
+                temporary.display()
+            )
         })
     } else {
         Ok(())
@@ -285,7 +553,9 @@ pub fn initialize_encrypted_database(path: &Path, password: &str) -> Result<(), 
 
 #[cfg(test)]
 mod plaintext_export_tests {
-    use super::{export_plaintext_to_encrypted, has_plaintext_sqlite_header, open_verified_database};
+    use super::{
+        export_plaintext_to_encrypted, has_plaintext_sqlite_header, open_verified_database,
+    };
     use rusqlite::Connection;
 
     #[test]
@@ -294,7 +564,9 @@ mod plaintext_export_tests {
             "maybe-later-export-test-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         std::fs::create_dir(&directory).unwrap();
         let source_path = directory.join("source.db");
@@ -303,8 +575,11 @@ mod plaintext_export_tests {
 
         let result = (|| -> Result<(), String> {
             let source = Connection::open(&source_path).map_err(|e| e.to_string())?;
-            source.execute_batch("PRAGMA journal_mode=WAL;").map_err(|e| e.to_string())?;
-            source.execute_batch("PRAGMA user_version = 42; PRAGMA application_id = 123456;")
+            source
+                .execute_batch("PRAGMA journal_mode=WAL;")
+                .map_err(|e| e.to_string())?;
+            source
+                .execute_batch("PRAGMA user_version = 42; PRAGMA application_id = 123456;")
                 .map_err(|e| e.to_string())?;
 
             source.execute_batch("CREATE TABLE entries (id TEXT PRIMARY KEY, content TEXT NOT NULL); INSERT INTO entries VALUES ('entry-1', 'test-content');")
@@ -319,44 +594,112 @@ mod plaintext_export_tests {
             assert!(has_plaintext_sqlite_header(&source_path)?);
             let reader = Connection::open(&source_path).map_err(|e| e.to_string())?;
             reader.execute_batch("BEGIN").map_err(|e| e.to_string())?;
-            let _: i64 = reader.query_row("SELECT COUNT(*) FROM entries", [], |row| row.get(0)).map_err(|e| e.to_string())?;
-            source.execute("INSERT INTO entries (id, content) VALUES (?1, ?2)", ["entry-after-reader", "wal-content"]).map_err(|e| e.to_string())?;
+            let _: i64 = reader
+                .query_row("SELECT COUNT(*) FROM entries", [], |row| row.get(0))
+                .map_err(|e| e.to_string())?;
+            source
+                .execute(
+                    "INSERT INTO entries (id, content) VALUES (?1, ?2)",
+                    ["entry-after-reader", "wal-content"],
+                )
+                .map_err(|e| e.to_string())?;
             let wal_path = directory.join("source.db-wal");
-            assert!(std::fs::metadata(&wal_path).map_err(|e| e.to_string())?.len() > 0, "WAL-файл должен существовать и содержать данные");
+            assert!(
+                std::fs::metadata(&wal_path)
+                    .map_err(|e| e.to_string())?
+                    .len()
+                    > 0,
+                "WAL-файл должен существовать и содержать данные"
+            );
             export_plaintext_to_encrypted(&source_path, &encrypted_path, password)?;
-            let leftovers = std::fs::read_dir(&directory).map_err(|e| e.to_string())?
-                .map(|entry| entry.map(|e| e.file_name().to_string_lossy().into_owned()).map_err(|e| e.to_string()))
+            let leftovers = std::fs::read_dir(&directory)
+                .map_err(|e| e.to_string())?
+                .map(|entry| {
+                    entry
+                        .map(|e| e.file_name().to_string_lossy().into_owned())
+                        .map_err(|e| e.to_string())
+                })
                 .collect::<Result<Vec<_>, _>>()?;
-            assert!(!leftovers.iter().any(|name| name.contains(".snapshot-") || name.contains(".exporting-")), "Остались временные файлы: {leftovers:?}");
+            assert!(
+                !leftovers
+                    .iter()
+                    .any(|name| name.contains(".snapshot-") || name.contains(".exporting-")),
+                "Остались временные файлы: {leftovers:?}"
+            );
             assert!(!has_plaintext_sqlite_header(&encrypted_path)?);
-            assert!(export_plaintext_to_encrypted(&source_path, &encrypted_path, password).is_err());
+            assert!(
+                export_plaintext_to_encrypted(&source_path, &encrypted_path, password).is_err()
+            );
             assert!(open_verified_database(&encrypted_path, "wrong-password").is_err());
 
             let encrypted = open_verified_database(&encrypted_path, password)?;
-            let history: (i64, Vec<u8>) = encrypted.query_row("SELECT version, checksum FROM _sqlx_migrations", [], |row| Ok((row.get(0)?, row.get(1)?))).map_err(|e| e.to_string())?;
+            let history: (i64, Vec<u8>) = encrypted
+                .query_row(
+                    "SELECT version, checksum FROM _sqlx_migrations",
+                    [],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .map_err(|e| e.to_string())?;
             assert_eq!(history, (1, vec![1, 2, 3]));
-            let content: String = encrypted.query_row("SELECT content FROM entries WHERE id = ?1", ["entry-1"], |row| row.get(0))
+            let content: String = encrypted
+                .query_row(
+                    "SELECT content FROM entries WHERE id = ?1",
+                    ["entry-1"],
+                    |row| row.get(0),
+                )
                 .map_err(|e| e.to_string())?;
             assert_eq!(content, "test-content");
-            let wal_content: String = encrypted.query_row("SELECT content FROM entries WHERE id = ?1", ["entry-after-reader"], |row| row.get(0)).map_err(|e| e.to_string())?;
+            let wal_content: String = encrypted
+                .query_row(
+                    "SELECT content FROM entries WHERE id = ?1",
+                    ["entry-after-reader"],
+                    |row| row.get(0),
+                )
+                .map_err(|e| e.to_string())?;
             assert_eq!(wal_content, "wal-content");
-            let null_value: Option<Vec<u8>> = encrypted.query_row("SELECT value FROM test_values WHERE id = 1", [], |row| row.get(0)).map_err(|e| e.to_string())?;
+            let null_value: Option<Vec<u8>> = encrypted
+                .query_row("SELECT value FROM test_values WHERE id = 1", [], |row| {
+                    row.get(0)
+                })
+                .map_err(|e| e.to_string())?;
             assert_eq!(null_value, None);
-            let blob_value: Vec<u8> = encrypted.query_row("SELECT value FROM test_values WHERE id = 2", [], |row| row.get(0)).map_err(|e| e.to_string())?;
+            let blob_value: Vec<u8> = encrypted
+                .query_row("SELECT value FROM test_values WHERE id = 2", [], |row| {
+                    row.get(0)
+                })
+                .map_err(|e| e.to_string())?;
             assert_eq!(blob_value, vec![0x00, 0xFF, 0x80, 0xAB]);
-            let sequence: i64 = encrypted.query_row("SELECT seq FROM sqlite_sequence WHERE name = ?1", ["sequence_test"], |row| row.get(0))
+            let sequence: i64 = encrypted
+                .query_row(
+                    "SELECT seq FROM sqlite_sequence WHERE name = ?1",
+                    ["sequence_test"],
+                    |row| row.get(0),
+                )
                 .map_err(|e| format!("Не удалось прочитать счётчик AUTOINCREMENT: {e}"))?;
             assert_eq!(sequence, 100, "Счётчик AUTOINCREMENT потерян при экспорте");
             drop(encrypted);
 
-            reader.execute_batch("ROLLBACK").map_err(|e| e.to_string())?;
+            reader
+                .execute_batch("ROLLBACK")
+                .map_err(|e| e.to_string())?;
             drop(reader);
             drop(source);
             let original = Connection::open(&source_path).map_err(|e| e.to_string())?;
-            let original_content: String = original.query_row("SELECT content FROM entries WHERE id = ?1", ["entry-1"], |row| row.get(0))
+            let original_content: String = original
+                .query_row(
+                    "SELECT content FROM entries WHERE id = ?1",
+                    ["entry-1"],
+                    |row| row.get(0),
+                )
                 .map_err(|e| e.to_string())?;
             assert_eq!(original_content, "test-content");
-            let original_wal_content: String = original.query_row("SELECT content FROM entries WHERE id = ?1", ["entry-after-reader"], |row| row.get(0)).map_err(|e| e.to_string())?;
+            let original_wal_content: String = original
+                .query_row(
+                    "SELECT content FROM entries WHERE id = ?1",
+                    ["entry-after-reader"],
+                    |row| row.get(0),
+                )
+                .map_err(|e| e.to_string())?;
             assert_eq!(original_wal_content, "wal-content");
             Ok(())
         })();
@@ -369,6 +712,139 @@ mod plaintext_export_tests {
 }
 
 #[cfg(test)]
+mod password_change_tests {
+    use super::{
+        change_encrypted_database_password, create_encrypted_database, open_verified_database,
+    };
+
+    fn test_directory() -> std::path::PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "maybe-later-password-change-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&path).unwrap();
+        path
+    }
+
+    #[test]
+    fn changes_password_without_modifying_source_database() {
+        let directory = test_directory();
+        let source_path = directory.join("source.db");
+        let destination_path = directory.join("changed.db");
+
+        let result = (|| -> Result<(), String> {
+            let source = create_encrypted_database(&source_path, "old-test-password")?;
+            source
+                .execute_batch(
+                    "PRAGMA user_version = 42;
+                     PRAGMA application_id = 123456;
+                     CREATE TABLE password_test (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
+                     INSERT INTO password_test VALUES (1, 'preserved secret');",
+                )
+                .map_err(|e| e.to_string())?;
+            drop(source);
+
+            change_encrypted_database_password(
+                &source_path,
+                &destination_path,
+                "old-test-password",
+                "new-test-password",
+            )?;
+
+            assert!(open_verified_database(&source_path, "old-test-password").is_ok());
+            assert!(open_verified_database(&source_path, "new-test-password").is_err());
+            assert!(open_verified_database(&destination_path, "old-test-password").is_err());
+
+            let changed = open_verified_database(&destination_path, "new-test-password")?;
+            let value: String = changed
+                .query_row("SELECT value FROM password_test WHERE id = 1", [], |row| {
+                    row.get(0)
+                })
+                .map_err(|e| e.to_string())?;
+            assert_eq!(value, "preserved secret");
+
+            let user_version: i64 = changed
+                .query_row("PRAGMA user_version", [], |row| row.get(0))
+                .map_err(|e| e.to_string())?;
+            let application_id: i64 = changed
+                .query_row("PRAGMA application_id", [], |row| row.get(0))
+                .map_err(|e| e.to_string())?;
+            assert_eq!(user_version, 42);
+            assert_eq!(application_id, 123456);
+            Ok(())
+        })();
+
+        let cleanup = std::fs::remove_dir_all(&directory);
+        result.expect("Смена пароля должна сохранить данные и исходную базу");
+        cleanup.expect("Временный каталог теста должен удаляться");
+    }
+
+    #[test]
+    fn rejects_wrong_old_password_without_publishing_destination() {
+        let directory = test_directory();
+        let source_path = directory.join("source.db");
+        let destination_path = directory.join("changed.db");
+
+        let result = (|| -> Result<(), String> {
+            drop(create_encrypted_database(
+                &source_path,
+                "old-test-password",
+            )?);
+            assert!(change_encrypted_database_password(
+                &source_path,
+                &destination_path,
+                "wrong-old-password",
+                "new-test-password",
+            )
+            .is_err());
+            assert!(!destination_path.exists());
+            assert!(open_verified_database(&source_path, "old-test-password").is_ok());
+            Ok(())
+        })();
+
+        let cleanup = std::fs::remove_dir_all(&directory);
+        result.expect("Неправильный старый пароль должен отклоняться безопасно");
+        cleanup.expect("Временный каталог теста должен удаляться");
+    }
+
+    #[test]
+    fn refuses_to_overwrite_destination_during_password_change() {
+        let directory = test_directory();
+        let source_path = directory.join("source.db");
+        let destination_path = directory.join("changed.db");
+
+        let result = (|| -> Result<(), String> {
+            drop(create_encrypted_database(
+                &source_path,
+                "old-test-password",
+            )?);
+            std::fs::write(&destination_path, b"must-not-be-overwritten")
+                .map_err(|e| e.to_string())?;
+
+            assert!(change_encrypted_database_password(
+                &source_path,
+                &destination_path,
+                "old-test-password",
+                "new-test-password",
+            )
+            .is_err());
+            let contents = std::fs::read(&destination_path).map_err(|e| e.to_string())?;
+            assert_eq!(contents, b"must-not-be-overwritten");
+            assert!(open_verified_database(&source_path, "old-test-password").is_ok());
+            Ok(())
+        })();
+
+        let cleanup = std::fs::remove_dir_all(&directory);
+        result.expect("Существующий целевой файл должен оставаться нетронутым");
+        cleanup.expect("Временный каталог теста должен удаляться");
+    }
+}
+
+#[cfg(test)]
 mod creation_safety_tests {
     use super::create_encrypted_database;
 
@@ -377,19 +853,28 @@ mod creation_safety_tests {
         let path = std::env::temp_dir().join(format!(
             "maybe-later-publish-test-{}-{}.db",
             std::process::id(),
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         let result = (|| -> Result<(), String> {
             super::initialize_encrypted_database(&path, "test-only-password")?;
             let conn = super::open_verified_database(&path, "test-only-password")?;
-            let count: i64 = conn.query_row("SELECT COUNT(*) FROM _sqlx_migrations", [], |row| row.get(0)).map_err(|e| e.to_string())?;
+            let count: i64 = conn
+                .query_row("SELECT COUNT(*) FROM _sqlx_migrations", [], |row| {
+                    row.get(0)
+                })
+                .map_err(|e| e.to_string())?;
             assert_eq!(count, 6);
             drop(conn);
             assert!(super::initialize_encrypted_database(&path, "another-password").is_err());
             assert!(super::open_verified_database(&path, "test-only-password").is_ok());
             Ok(())
         })();
-        if path.exists() { std::fs::remove_file(&path).unwrap(); }
+        if path.exists() {
+            std::fs::remove_file(&path).unwrap();
+        }
         result.expect("Безопасная публикация SQLCipher-базы должна работать");
     }
 
@@ -414,13 +899,16 @@ mod creation_safety_tests {
 
             assert!(super::open_verified_database(&path, "wrong-password").is_err());
             let conn = super::open_verified_database(&path, "test-only-password")?;
-            let value: String = conn.query_row("SELECT value FROM encryption_test", [], |row| row.get(0))
+            let value: String = conn
+                .query_row("SELECT value FROM encryption_test", [], |row| row.get(0))
                 .map_err(|e| e.to_string())?;
             assert_eq!(value, "secret-value");
             Ok(())
         })();
 
-        if path.exists() { std::fs::remove_file(&path).unwrap(); }
+        if path.exists() {
+            std::fs::remove_file(&path).unwrap();
+        }
         result.expect("Создание и повторное открытие SQLCipher-базы должны работать");
     }
 
@@ -441,7 +929,10 @@ mod creation_safety_tests {
         let contents = std::fs::read(&path).unwrap();
         std::fs::remove_file(&path).unwrap();
 
-        assert!(result.is_err(), "Создание поверх существующего файла должно завершаться ошибкой");
+        assert!(
+            result.is_err(),
+            "Создание поверх существующего файла должно завершаться ошибкой"
+        );
         assert_eq!(contents, b"existing-file-must-survive");
     }
 }
@@ -460,9 +951,7 @@ mod tests {
 
     #[test]
     fn correct_password_opens_encrypted_database() {
-        let path = Path::new(
-            "../../sqlcipher-build-test/test-data/encrypted-test.db"
-        );
+        let path = Path::new("../../sqlcipher-build-test/test-data/encrypted-test.db");
 
         let conn = open_verified_database(path, "correct-test-password")
             .expect("Правильный пароль должен открывать тестовую базу");
@@ -499,10 +988,7 @@ mod write_tests {
             .expect("Не удалось создать временную копию тестовой базы");
 
         let result = (|| -> Result<(), String> {
-            let conn = open_verified_database(
-                &temp_path,
-                "correct-test-password",
-            )?;
+            let conn = open_verified_database(&temp_path, "correct-test-password")?;
 
             conn.execute(
                 "INSERT INTO test (message) VALUES (?1)",
