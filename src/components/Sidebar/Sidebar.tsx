@@ -99,10 +99,10 @@ export function Sidebar() {
               type="button"
               className="sidebar__item sidebar__lock"
               onClick={() => window.dispatchEvent(new Event('journal-lock-request'))}
-              title="Заблокировать дневник"
+              title={t('lockJournal')}
             >
               <LockKeyhole size={20} />
-              <span>Заблокировать дневник</span>
+              <span>{t('lockJournal')}</span>
             </button>
           )}
           <NavLink to="/settings" className="sidebar__item"><Settings size={20} /><span>{t('settings')}</span></NavLink>

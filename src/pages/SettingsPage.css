@@ -13,3 +13,16 @@
 
 /* Disabled in the Alternative theme; original preference values are preserved. */
 .switch:disabled{opacity:.42;cursor:not-allowed}
+
+/* Unencrypted JSON backup warning. */
+.settings-backup-warning {
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, #d99a35 35%, var(--border));
+  border-radius: 10px;
+  background: color-mix(in srgb, #d99a35 9%, var(--panel));
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}

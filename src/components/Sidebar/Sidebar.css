@@ -241,6 +241,19 @@
   cursor: pointer;
   text-align: left;
   font: inherit;
+  font-size: 14px;
+  gap: 10px;
+  padding-inline: 10px;
+}
+
+.sidebar__lock svg {
+  flex-shrink: 0;
+}
+
+.sidebar__lock span {
+  min-width: 0;
+  line-height: 1.3;
+  white-space: normal;
 }
 .sidebar__lock:hover {
   color: white;
